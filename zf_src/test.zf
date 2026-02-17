@@ -1,0 +1,538 @@
+and := \a.\b. !(a -> !b) ;
+or := \a.\b. !a -> b ;
+iff := \a.\b. and (a -> b) (b -> a);
+exists := \fn.!\/x.!(fn x);
+eq := \a.\b. (\/z. iff z#a z#b) ;
+subset := \A. \B.  \/x. x#A -> x#B ;
+union := \x. \y. \S. \/a. iff a#S (or a#x a#y) ;
+intersection := \x. \y. \S. \/a. iff a#S (and a#x a#y) ;
+unique := \B. \x. and (B x) (\/y. (B y) -> (eq x y)) ;
+empty_set := \x.\/y.!y#x;
+unordered_pair := \x.\y. \S. \/a. iff a#S (or (eq a x) (eq a y)) ;
+singleton := \x. \S. \/y. iff y#S (eq y x) ;
+pair := \x.\y. \S. (exists \Q. and (unordered_pair x y Q) (unordered_pair x Q S)) ;
+cartesian_product := \A. \B. \S. 
+	(\/Q. iff Q#S (exists \x. exists \y. and (and x#A y#B) (pair x y Q))) ;
+powerset := \x. \S. \/z. (subset z x) -> z#S ;
+Map := \A. \B. \S. exists \Q. 
+	and
+		(exists \Q. and (cartesian_product A B Q) (subset S Q))
+		\/x. (exists \y. 
+			\/v. \/Q. iff (and (pair x v Q) Q#S) (eq v y))
+;
+
+
+
+
+--law of denied antecedent !p -> p -> q
+loda := \p.\q. {x : !p} A3 q p (A1 !p !q x) ;
+
+--law of double negation  !!p -> p
+ldn := \p. {x : !!p} (A3 p !!p) (loda !p !!!p x) x; 
+
+--converse law of double negation p -> !!p
+cldn := \p. (A3 !!p p) (ldn !p) ;
+
+-- and a b -> a
+and_l := \a. \b. A3 a !(a -> !b) (({q : !a} cldn (a -> !b) (loda a !b q))) ;
+
+-- and a b -> b
+and_r := \a. \b. A3 b !(a -> !b) (({q : !b} cldn (a -> !b) (A1 !b a q)));
+
+-- a -> b -> and a b
+and_intro := \a. \b. {f : a} (A3 !(a -> !b) b)
+	(({ p : (a -> !b) -> !b } { q : !!(a -> !b) } p (ldn (a -> !b) q))
+	({ q : a -> !b } q f));
+
+-- a -> or a b
+or_intro_l := \a. \b. { p : a } { q: !a }  loda a b q p ;
+
+-- b -> or a b
+or_intro_r := \a. \b. A1 b !a ;
+
+-- clavius's law (~q -> q) -> q
+cl := \q. { a : !q -> q } (A3 q (!q -> q)) 
+	({b : !q} loda q !(!q -> q) b (a b)) a ;
+
+
+-- boolean case analysis (a -> b) -> (!a -> b) -> b
+bool_cases := \A. \B. { a : A -> B } {b : !A -> B} 
+	(cl B) ({q : !B} a ((A3 A !B) 
+		({c : !A } cldn B (b c)) q)) ;
+
+-- or case analysis (a -> q) -> (b -> q) -> (!a -> b) -> q
+or_cases := \A. \B. \C. {p : A -> C} { q : B -> C } {r : or A B } 
+	(bool_cases A C) p ({x : !A} q (r x));
+
+-- A R -> (exists \x. A x)
+exists_intro := \A. \/R. {x : A R} 
+		(A3 !(\/x. !(A x)) (A R) 
+		({y : !!(\/x. !(A x))} loda (A R) !(A R)
+			 ((ldn (\/x. !(A x)) y) R) x )) x ;
+
+-- (exists A) -> (\/x. (A x) -> (B x)) -> (exists B);
+exists_mp := \A. \B. { x : exists A} {y : \/x. (A x) -> (B x)} 
+	bool_cases (A R) (exists B) 
+	({v : (A R)} exists_intro B R ((y R) v))
+	(A3 (exists B) !(A R)
+	{v : !(exists B)} 
+	cldn (A R )
+	(loda (\/x. !(A x)) (A R) x 
+		\/R. A3 !(A R) !(B R)
+			({t : !!(A R)} cldn (B R) 
+				((y R) (ldn (A R) t))) 
+			(ldn (\/x. !(B x)) v R)))
+;
+
+exists_strip := \A. {p : exists \x. A}
+	bool_cases A A
+		({v : A} v)
+		({v : !A} loda (\/z. !A) A p (\/z. v))
+;
+
+-- (exists \a. exists \b. F a b) -> (exists \b. exists \a. F a b)
+exists_flip := \F. {A : exists \a. exists \b. F a b }
+	bool_cases (exists \b. exists \a. F a b) (exists \b. exists \a. F a b)
+	({v : exists \b. exists \a. F a b} v)
+	{B : !(exists \b. exists \a. F a b)} 
+	loda (exists \b. exists \a. F a b) (exists \b. exists \a. F a b) B
+	(exists_strip (exists \b. exists \a. F a b)
+	(exists_mp (\a. exists \b. F a b)
+	(\a. exists \b. exists \a. F a b) A
+	(\/a. {C : exists \b. F a b}
+		loda (\/P. !(F a P)) (exists \b. exists \a. F a b) C
+		(\/P. ldn (\/a. !(F a P)) (ldn (\/b. !(exists \a. F a b))
+			B P) a))))
+;
+
+iff_lr := \a. \b. and_l (a -> b) (b -> a) ;
+iff_rl := \a. \b. and_r (a -> b) (b -> a) ;
+iff_intro := \a. \b. and_intro (a -> b) (b -> a) ;
+iff_trans := \a. \b. \c. {x : iff a b} {y : iff b c} 
+	iff_intro a c
+	({v : a} iff_lr b c y (iff_lr a b x v))
+	({v : c} iff_rl a b x (iff_rl b c y v))
+;
+
+
+
+
+refl : \/a. eq a a : \/a.\/z. iff_intro z#a z#a
+	({x : z#a} x) ({x : z#a} x);
+symm : \/a. \/b. (eq a b) -> (eq b a) : \/a. \/b. { x : eq a b } 
+	\/z. iff_intro z#b z#a
+		(iff_rl z#a z#b (x z)) 
+		(iff_lr z#a z#b (x z));
+trans : \/a. \/b. \/c. (eq a b) -> (eq b c) -> (eq a c) : 
+\/a. \/b. \/c. {x : eq a b} {y : eq b c} 
+	\/z. iff_intro z#a z#c
+	({v : z#a} iff_lr z#b z#c (y z) (iff_lr z#a z#b (x z) v))
+	({v : z#c} iff_rl z#a z#b (x z) (iff_rl z#b z#c (y z) v))
+;
+ext : \/x. \/y. (eq x y) -> \/z. iff x#z y#z : Z1 ;
+
+subset_refl : \/A. subset A A : \/A. \/z. {x : z#A} x ;
+subset_trans : \/A. \/B. \/C. (subset A B) -> (subset B C) -> (subset A C) : \/A. \/B. \/C. {x : subset A B } { y : subset B C } 
+	\/z. {v : z#A} (y z) ((x z) v) ;
+subset_eq : \/A. \/B. (subset A B) -> (subset B A) -> (eq A B) : \/A. \/B. { x : subset A B } { y : subset B A }
+	\/z. iff_intro z#A z#B (x z) (y z) ;
+
+
+union_l : \/A. \/B. \/S. (union A B S) -> (subset A S) : 
+\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#L}
+	(iff_rl x#S (or x#L x#R) (y x)) 
+	(or_intro_l x#L x#R x) ;
+
+union_r : \/A. \/B. \/S. (union A B S) -> (subset B S) : 
+\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#R}
+	(iff_rl x#S (or x#L x#R) (y x)) 
+	(or_intro_r x#L x#R x) ;
+
+union_comm_l : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> 
+	(subset S Q)
+: \/A. \/B. \/S. \/Q. {a : union A B S} {b : union B A Q} \/x. {x : x#S}
+	or_cases x#A x#B x#Q
+		({v : x#A} iff_rl x#Q (or x#B x#A) (b x) 
+			(or_intro_r x#B x#A v))
+		({v : x#B} iff_rl x#Q (or x#B x#A) (b x) 
+			(or_intro_l x#B x#A v))
+	(iff_lr x#S (or x#A x#B) (a x) x)
+	
+;
+
+union_comm : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> (eq S Q)
+: \/A. \/B. \/S. \/Q. { a : union A B S} {b : union B A Q}
+	subset_eq S Q
+		(union_comm_l A B S Q a b)
+		(union_comm_l B A Q S b a);
+
+
+intersection_l : \/A. \/B. \/S. (intersection A B S) -> (subset S A) : 
+\/X. \/Y. \/S. {x : intersection X Y S} 
+	\/z. {v : z#S} and_l z#X z#Y (iff_lr z#S (and z#X z#Y) (x z) v) ;
+
+intersection_r : \/A. \/B. \/S. (intersection A B S) -> (subset S B) : 
+\/X. \/Y. \/S. {x : intersection X Y S} 
+	\/z. {v : z#S} and_r z#X z#Y (iff_lr z#S (and z#X z#Y) (x z) v) ;
+
+
+
+empty_set_exists : exists empty_set : Z0 ;
+empty_sets_eq : \/X. \/Y. (empty_set X) -> (empty_set Y) -> (eq X Y): \/X. \/Y. {x : empty_set X} {y : empty_set Y} 
+	subset_eq X Y
+		(\/z. {v : z#X} loda z#X (z#Y) (x z) v)
+		(\/z. {v : z#Y} loda z#Y (z#X) (y z) v)
+;
+
+
+
+unique_empty_set : exists (unique empty_set) :
+exists_mp empty_set (unique empty_set) empty_set_exists
+\/X. { x : empty_set X } 
+and_intro (empty_set X) (\/y. (empty_set y) -> (eq X y)) x
+	(\/y. ({v : empty_set y} empty_sets_eq X y x v)) 
+;
+
+unordered_pair_l : \/x. \/y. \/S. (unordered_pair x y S) -> x#S : 
+\/x. \/y. \/S. {a : unordered_pair x y S} 
+	iff_rl x#S (or (eq x x) (eq x y)) (a x)
+		(or_intro_l (eq x x) (eq x y) (refl x))
+;
+unordered_pair_r : \/x. \/y. \/S. (unordered_pair x y S) -> y#S : 
+\/x. \/y. \/S. {a : unordered_pair x y S} 
+	iff_rl y#S (or (eq y x) (eq y y)) (a y)
+		(or_intro_r (eq y x) (eq y y) (refl y))
+;
+
+ax_pairing : \/x.\/y. exists \z. and x#z y#z : Z4 ;
+
+
+
+
+unordered_pair_exists::t0 : {A : and x#z y#z} 
+iff_intro (and q#z (or (eq q x) (eq q y))) (or (eq q x) (eq q y)) 
+	(and_r q#z (or (eq q x) (eq q y)))
+	{v : or (eq q x) (eq q y)} 
+	and_intro q#z (or (eq q x) (eq q y))
+		((or_cases (eq q x) (eq q y) q#z
+			({v : eq q x} iff_rl q#z x#z 
+				(ext q x v z) (and_l x#z y#z A))
+			({v : eq q y} iff_rl q#z y#z 
+				(ext q y v z) (and_r x#z y#z A)))
+			v)
+		v
+;
+
+unordered_pair_exists::t1 : {A : and x#z y#z} \/f. {v : \/q. iff q#f (and q#z (or (eq q x) (eq q y))) }
+	\/q. iff_trans q#f (and q#z (or (eq q x) (eq q y))) 
+		(or (eq q x) (eq q y))
+		(v q)
+		(unordered_pair_exists::t0 A)
+;
+
+
+unordered_pair_exists::t2 : \/z. (and x#z y#z) -> (exists (\S. unordered_pair x y S)): 
+\/z. {A : and x#z y#z} exists_mp 
+	(\f. \/q. iff q#f (and q#z (or (eq q x) (eq q y)))) 
+	(\f. \/q. iff q#f (or (eq q x) (eq q y)))
+	(Z3 z q (or (eq q x) (eq q y)))
+	(unordered_pair_exists::t1 A)
+;
+
+unordered_pair_exists::t3 : exists \z. exists \S. unordered_pair x y S : 
+exists_mp (\z. and x#z y#z) (\z. exists \S. unordered_pair x y S) 
+	(ax_pairing x y)
+	unordered_pair_exists::t2
+;
+
+unordered_pair_exists : \/x. \/y. exists \S. unordered_pair x y S : 
+	\/x. \/y. exists_strip (exists \S. unordered_pair x y S) 
+			unordered_pair_exists::t3
+;
+
+
+singleton_exists::0 : \/Q. (\/a. iff a#Q (or (eq a x) (eq a x))) 
+	-> (\/a. iff a#Q (eq a x))
+
+: \/Q. {A : \/a. iff a#Q (or (eq a x) (eq a x))}
+	\/a. (iff_trans a#Q (or (eq a x) (eq a x)) (eq a x)
+		(A a)
+		(iff_intro (or (eq a x) (eq a x)) (eq a x)
+			({ v : or (eq a x) (eq a x) }
+				or_cases (eq a x) (eq a x) (eq a x)
+				({b : eq a x} b)
+				({b : eq a x} b) v)
+			(or_intro_l (eq a x) (eq a x))))
+;
+
+singleton_exists : \/x. exists (singleton x) : \/x. exists_mp 
+	(\Q. \/a. iff a#Q (or (eq a x) (eq a x)))
+	(\Q. \/a. iff a#Q (eq a x)) 
+	(unordered_pair_exists x x)
+	singleton_exists::0
+;
+
+singleton_member : \/x. \/S. (singleton x S) -> x#S: \/x. \/S. {A : singleton x S} 
+	iff_rl x#S (eq x x) (A x) (refl x)
+;
+
+
+ax_regularity : \/x. (exists \a. a#x) -> 
+	(exists \y. and y#x !(exists \z. and z#y z#x)) : Z2 ;
+
+ax_union : \/w. exists \a.\/y.\/x.(and x#y y#w) -> x#a : Z5 ;
+
+
+not_in_self::1 : {a : x#x} {A : singleton x S}
+{ B : and y#S !(exists \z. and z#y z#S)}
+	exists_intro (\z. and z#y z#S) x
+	(and_intro x#y x#S
+	(iff_rl x#y x#x
+	(iff_lr y#S (eq y x) (A y) 
+		(and_l y#S !(exists \z. and z#y z#S) B) x) 
+		a)
+	(singleton_member x S A))
+;
+
+not_in_self::2 : {a : x#x} { A : singleton x S } 
+\/y. ({ B : and y#S !(exists \z. and z#y z#S)}
+	loda (exists \z. and z#y z#S) !x#x 
+		(and_r y#S !(exists \z. and z#y z#S) B)
+		(not_in_self::1 a A B))
+
+;
+
+not_in_self::3 : {a : x#x} \/S. {A :singleton x S } 
+	exists_strip !x#x
+	(exists_mp 
+		(\y. and y#S !(exists \z.and z#y z#S))
+		(\y. !x#x)
+		(ax_regularity S (exists_intro (\x. x#S) x 
+			(singleton_member x S A)))
+		(not_in_self::2 a A))
+;
+
+not_in_self : \/x. {a : x#x} 
+	exists_strip !x#x
+		(exists_mp
+			(singleton x)
+			(\S. !x#x)
+			(singleton_exists x)
+			(not_in_self::3 a))
+;
+
+
+
+self_not_unordered_pair_l : \/x. \/y. \/S. (unordered_pair x y S) -> (eq x S) -> x#x   : \/x. \/y. \/S. { A : unordered_pair x y S }
+		({v : eq x S} iff_rl x#x x#S (v x) 
+			(unordered_pair_l x y S A))
+;
+
+self_not_unordered_pair_r : \/x. \/y. \/S. (unordered_pair x y S) -> (eq y S) -> y#y   : \/x. \/y. \/S. { A : unordered_pair x y S }
+		({v : eq y S} iff_rl y#y y#S (v y) 
+			(unordered_pair_r x y S A))
+;
+
+
+
+
+
+pair_l::0 : \/Q. {A : and (unordered_pair x y Q) (unordered_pair x Q S)} 
+	unordered_pair_l x Q S
+		(and_r (unordered_pair x y Q) (unordered_pair x Q S) A)
+;
+
+
+
+pair_l : \/x. \/y. \/S. (pair x y S) -> x#S : 
+\/x. \/y. \/S. {A : pair x y S} 
+	exists_strip x#S
+	(exists_mp 
+		(\Q. and (unordered_pair x y Q) (unordered_pair x Q S))
+		(\Q. x#S)
+		A 
+		pair_l::0)
+;
+
+pair_r::0 : \/Q. {A : and (unordered_pair x y Q) (unordered_pair x Q S)}
+	and_intro (unordered_pair x y Q) (Q#S)
+	(and_l (unordered_pair x y Q) (unordered_pair x Q S) A)
+	(unordered_pair_r x Q S
+		(and_r (unordered_pair x y Q) (unordered_pair x Q S) A))
+;
+
+pair_r : \/x. \/y. \/S. (pair x y S) -> (exists \Q. and (unordered_pair x y Q) Q#S) : 
+\/x. \/y. \/S. { A : pair x y S }
+	exists_mp
+		(\Q. and (unordered_pair x y Q) (unordered_pair x Q S))
+		(\Q. and (unordered_pair x y Q) Q#S)
+		A
+		pair_r::0 
+;
+
+pair_pos_distinction : 
+\/x. \/y. \/S. \/Q. (and (unordered_pair x y Q) (unordered_pair x Q S)) -> (eq x Q) -> x#x 
+: \/x. \/y. \/S. \/Q. { A : and (unordered_pair x y Q) (unordered_pair x Q S)}
+	(self_not_unordered_pair_l x y Q
+		(and_l (unordered_pair x y Q) (unordered_pair x Q S) A))
+;
+
+
+pair_is_l : 
+(and (unordered_pair x y Q) (unordered_pair x Q S))
+ -> a#S -> a#Q -> (eq a x)
+: {A : and (unordered_pair x y Q) (unordered_pair x Q S)} 
+{ B : a#S } { C : a#Q } 
+	(or_cases (eq a x) (eq a Q) (eq a x)
+		({v : eq a x} v)
+		({v : eq a Q} 
+			loda a#a (eq a x)
+				(not_in_self a (iff_rl a#a a#Q (v a) C))
+				(iff_rl a#a a#Q (v a) C)))
+	(iff_lr a#S (or (eq a x) (eq a Q))
+		(and_r (unordered_pair x y Q) (unordered_pair x Q S) A a)
+		B)
+;
+
+
+pair_is_r :
+(and (unordered_pair x y Q) (unordered_pair x Q S)) 
+-> !a#S -> a#Q -> (eq a y)
+: {A : and (unordered_pair x y Q) (unordered_pair x Q S)} 
+{ B : !a#S } { C : a#Q } 
+	or_cases (eq a x) (eq a y) (eq a y)
+		({v : eq a x}
+			loda a#S (eq a y)
+			B
+			(iff_rl a#S x#S (ext a x v S)
+				(unordered_pair_l x Q S 
+			(and_r (unordered_pair x y Q) 
+				(unordered_pair x Q S) A))))
+		({v : eq a y} v)
+	(iff_lr a#Q (or (eq a x) (eq a y))
+		(and_l (unordered_pair x y Q) (unordered_pair x Q S) A a)
+		C)
+
+;
+
+pair_exists::0 : {A : unordered_pair x y Q} 
+\/S. {B : unordered_pair x Q S}
+	and_intro (unordered_pair x y Q) (unordered_pair x Q S)
+		A
+		B;
+
+pair_exists::1 : \/Q. {A : unordered_pair x y Q}
+	exists_mp 
+		(\S. unordered_pair x Q S)
+		(\S. and (unordered_pair x y Q) (unordered_pair x Q S))
+		(unordered_pair_exists x Q) 
+		(pair_exists::0 A)
+;
+
+pair_exists :
+\/x. \/y. exists (pair x y)
+: \/x. \/y. exists_flip (\Q. \S. and (unordered_pair x y Q) 
+		(unordered_pair x Q S))
+	(exists_mp
+		(\Q. unordered_pair x y Q)
+		(\Q. exists \S. and (unordered_pair x y Q) 
+			(unordered_pair x Q S))
+		(unordered_pair_exists x y)
+		pair_exists::1) ;
+
+
+
+
+
+ax_powerset : \/x. exists (powerset x) : Z8 ;
+
+union_exists::0 :
+(unordered_pair x y S) -> (\/b. \/a. (and a#b b#S) -> a#Q) -> (or q#x q#y) -> q#Q
+: {A : unordered_pair x y S} {B : \/b. \/a. (and a#b b#S) -> a#Q}
+	or_cases q#x q#y q#Q
+		({p : q#x} B x q (and_intro q#x x#S p (unordered_pair_l x y S A)))
+		({p : q#y} B y q (and_intro q#y y#S p (unordered_pair_r x y S A)))
+;
+
+union_exists::1 : 
+(unordered_pair x y S) -> (\/b. \/a. (and a#b b#S) -> a#Q) ->
+\/f. (\/q. iff q#f (and q#Q (or q#x q#y))) -> (\/q. iff q#f (or q#x q#y))
+: {A : unordered_pair x y S} {B : \/b. \/a. (and a#b b#S) -> a#Q}
+	\/f. {C : \/q. iff q#f (and q#Q (or q#x q#y))}
+	\/q. iff_trans q#f (and q#Q (or q#x q#y)) (or q#x q#y)
+	(C q)
+	(iff_intro (and q#Q (or q#x q#y)) (or q#x q#y)
+		({v : and q#Q (or q#x q#y)} and_r q#Q (or q#x q#y) v)
+		({v : or q#x q#y} and_intro q#Q (or q#x q#y) (union_exists::0 A B v) v))
+;
+
+union_exists::2 : {A : unordered_pair x y S} \/Q. {B : \/b. \/a. (and a#b b#S) -> a#Q}
+	exists_mp
+		(\f. \/q. iff q#f (and q#Q (or q#x q#y)))
+		(\f. \/q. iff q#f (or q#x q#y))
+	(Z3 Q a (or a#x a#y))
+	(union_exists::1 A B)
+;
+
+union_exists::3 : \/S. {A : unordered_pair x y S} 
+	exists_strip (exists(union x y))
+	(exists_mp
+		(\Q. \/b. \/a. (and a#b b#S) -> a#Q)
+		(\Q. exists(union x y))
+	(ax_union S)
+	(union_exists::2 A))
+;
+
+union_exists : \/x. \/y. exists (union x y) : \/x. \/y. 
+	exists_strip (exists(union x y))
+	(exists_mp
+	(\S. unordered_pair x y S)
+	(\S. exists(union x y))
+	(unordered_pair_exists x y)
+	union_exists::3)
+;
+
+intersection_exists :
+	\/A. \/B. exists (intersection A B)
+: \/A. \/B. Z3 A x x#B ;
+
+-- want  a#Q -> or (and a#S (eq a x)) (and !a#S (eq a y))
+-- for iff
+
+
+id_map::0 : 
+\/Q. \/x. (and x#A (pair x x Q)) -> (exists \y. and (and x#A y#A) (pair x y Q))
+: \/Q. \/x. { A : and x#A (pair x x Q) }
+	exists_intro (\y. and (and x#A y#A) (pair x y Q)) x
+	(and_intro (and x#A x#A) (pair x x Q)
+		(and_intro x#A x#A 
+			(and_l x#A (pair x x Q) A)
+			(and_l x#A (pair x x Q) A))
+		(and_r x#A (pair x x Q) A))
+;
+
+id_map::1
+:
+(cartesian_product A A P)->(\/Q. iff Q#S (exists \x. and x#A (pair x x Q)))
+-> (subset S P)
+: 
+	{ a : cartesian_product A A P }
+	{ b : \/Q. iff Q#S (exists \x. and x#A (pair x x Q)) }
+
+	\/X. { v : X#S }
+	iff_rl X#P (exists \x. exists \y. and (and x#A y#A) (pair x y X)) 
+		(a X) 
+	(exists_mp 
+		(\x. and x#A (pair x x X))
+		(\x. exists \y. and (and x#A y#A) (pair x y X))
+	(iff_lr X#S (exists \x. and x#A (pair x x X)) (b X)
+		v)
+	(id_map::0 X))
+;
+
+-- id_map2 : { b : \/Q. iff Q#S (exists \x. and x#A (pair x x Q)) }
+-- \/v. \/Q. iff_intro (and (pair x v Q) Q#S) (eq v y) ; 
+-- need pair equality :/
+
+
+

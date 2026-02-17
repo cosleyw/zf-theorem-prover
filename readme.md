@@ -1,0 +1,3 @@
+# About
+
+This is a hilbert system for first order predicate logic with a single 2-ary function symbol (set membership) and the axioms of ZF. Unlike a typical type theory the deduction theorem is not assumed. The proof language generates the hilbert style proof of the deduction, which is similar to the relationship between typed S-K combinatory logic and simply typed lambda calculus. One advantage of this approach is that the proof language can be freely modified without sacrificing soundness so long as the underlying hilbert system is unchanged. The current implementation is exponential in the number of assumptions.
