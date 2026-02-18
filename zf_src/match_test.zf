@@ -1,0 +1,6 @@
+
+test := \p.
+	| a -> b => A1 a a ;
+
+p1 : test (A1 x#x y#y) ;
+

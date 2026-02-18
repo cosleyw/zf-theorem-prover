@@ -1,0 +1,134 @@
+and := \a.\b. !(a -> !b) ;
+or := \a.\b. !a -> b ;
+iff := \a.\b. and (a -> b) (b -> a);
+exists := \fn.!\/x.!(fn x);
+eq := \a.\b. (\/z. iff z#a z#b) ;
+subset := \A. \B.  \/x. x#A -> x#B ;
+union := \x. \y. \S. \/a. iff a#S (or a#x a#y) ;
+intersection := \x. \y. \S. \/a. iff a#S (and a#x a#y) ;
+unique := \B. \x. and (B x) (\/y. (B y) -> (eq x y)) ;
+empty_set := \x.\/y.!y#x;
+unordered_pair := \x.\y. \S. \/a. iff a#S (or (eq a x) (eq a y)) ;
+singleton := \x. \S. \/y. iff y#S (eq y x) ;
+pair := \x.\y. \S. (exists \Q. and (unordered_pair x y Q) (unordered_pair x Q S)) ;
+cartesian_product := \A. \B. \S. 
+	(\/Q. iff Q#S (exists \x. exists \y. and (and x#A y#B) (pair x y Q))) ;
+powerset := \x. \S. \/z. (subset z x) -> z#S ;
+Map := \A. \B. \S. exists \Q. 
+	and
+		(exists \Q. and (cartesian_product A B Q) (subset S Q))
+		\/x. (exists \y. 
+			\/v. \/Q. iff (and (pair x v Q) Q#S) (eq v y))
+;
+
+--law of denied antecedent !p -> p -> q
+loda := \p.\q. {x : !p} A3 q p (A1 !p !q x) ;
+
+--law of double negation  !!p -> p
+ldn := \p. {x : !!p} (A3 p !!p) (loda !p !!!p x) x; 
+
+--converse law of double negation p -> !!p
+cldn := \p. (A3 !!p p) (ldn !p) ;
+
+-- clavius's law (~q -> q) -> q
+cl := \q. { a : !q -> q } (A3 q (!q -> q)) 
+	({b : !q} loda q !(!q -> q) b (a b)) a ;
+
+
+
+
+
+-- a -> b -> and a b
+and_intro := \f. | a => \g. | b => (A3 !(a -> !b) b)
+	({ q : !!(a -> !b) } ({ q : a -> !b } q f) (ldn (a -> !b) q)) g;
+
+-- and a b -> a
+and_l := \p.
+	| !(a -> !b) => A3 a !(a -> !b) (({q : !a} cldn (a -> !b) (loda a !b q))) p;
+
+-- and a b -> b
+and_r := \p. 
+	| !(a -> !b) => A3 b !(a -> !b) (({q : !b} cldn (a -> !b) (A1 !b a q))) p;
+
+-- a -> or a b
+or_intro_l := \a. \b. { p : a } { q: !a }  loda a b q p ;
+
+-- b -> or a b
+or_intro_r := \a. \b. A1 b !a ;
+
+-- boolean case analysis (a -> b) -> (!a -> b) -> b
+bool_cases := \a. | A -> B => {b : !A -> B} 
+	(cl B) ({q : !B} a ((A3 A !B) 
+		({c : !A } cldn B (b c)) q)) ;
+
+-- or case analysis (or a b) -> (a -> c) -> (b -> c) -> c
+or_cases := \P. | !A -> B => 
+		\Q. | [A] -> C => { q : B -> C } 
+			bool_cases Q ({x : !A} q (P x));
+
+-- A R -> (exists \x. A x)
+exists_intro := \A. \/R. {x : A R} 
+		(A3 !(\/x. !(A x)) (A R) 
+		({y : !!(\/x. !(A x))} loda (A R) !(A R)
+			 ((ldn (\/x. !(A x)) y) R) x )) x ;
+
+-- (exists A) -> (\/x. (A x) -> (B x)) -> (exists B);
+exists_mp := \x. | !\/x.!A => \y. | \/x. [A x] -> B =>
+	bool_cases
+	({v : (A R)} exists_intro B R ((y R) v))
+	(A3 (exists B) !(A R)
+	{v : !(exists B)} 
+	cldn (A R )
+	(loda (\/x. !(A x)) (A R) x 
+		\/R. A3 !(A R) !(B R)
+			({t : !!(A R)} cldn (B R) 
+				((y R) (ldn (A R) t))) 
+			(ldn (\/x. !(B x)) v R)))
+;
+
+exists_strip := \p. | !\/x.!A =>
+	bool_cases
+		({v : A x} v)
+		({v : !(A x)} loda (\/z. !(A x)) (A x) p (\/z. v))
+;
+
+-- (exists \a. exists \b. F a b) -> (exists \b. exists \a. F a b)
+exists_flip := \A. | !\/a.!!\/b.!F =>
+	bool_cases ({v : exists \b. exists \a. F a b} v)
+	{B : !(exists \b. exists \a. F a b)} 
+	loda (exists \b. exists \a. F a b) (exists \b. exists \a. F a b) B
+	(exists_strip
+		(exists_mp A
+		(\/a. {C : exists \b. F a b}
+			loda (\/P. !(F a P)) (exists \b. exists \a. F a b) C
+			(\/P. ldn (\/a. !(F a P)) (ldn (\/b. !(exists \a. F a b))
+				B P) a))))
+;
+
+iff_lr := and_l ;
+iff_rl := and_r ;
+iff_intro := \p. | a -> b => {q : b -> a} and_intro p q ;
+iff_trans := \x. | !((a -> b) -> !(b -> a)) => \y. | !(([b] -> c) -> !(c -> [b])) =>
+	iff_intro
+		({v : a} iff_lr y (iff_lr x v))
+		({v : c} iff_rl x (iff_rl y v))
+;
+iff_mp := \x. | !((a -> b) -> !(b -> a)) => \y. 
+	| [a] => iff_lr x y
+	| [b] => iff_rl x y ;
+
+
+
+eq_refl : \/a. eq a a : \/a.\/z. iff_intro ({x : z#a} x) ({x : z#a} x);
+eq_symm : \/a. \/b. (eq a b) -> (eq b a) : \/a. \/b. { x : eq a b } 
+	\/z. iff_intro (iff_rl (x z)) (iff_lr (x z));
+eq_trans : \/a. \/b. \/c. (eq a b) -> (eq b c) -> (eq a c) : 
+\/a. \/b. \/c. {x : eq a b} {y : eq b c} 
+	\/z. iff_trans (x z) (y z);
+eq_ext : \/x. \/y. (eq x y) -> \/z. iff x#z y#z : Z1 ;
+
+
+
+
+
+

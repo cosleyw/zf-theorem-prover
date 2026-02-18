@@ -535,4 +535,5 @@ id_map::1
 -- need pair equality :/
 
 
+balls : A1 x#x y#y ;
 
