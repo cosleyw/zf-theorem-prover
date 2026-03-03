@@ -1,7 +1,7 @@
 import {zf_parse, Ref, Rule, print_term} from "./js_src/syntax.js";
 import {zf_rules, term_eq} from "./js_src/zf.js";
 import {ns_get, ns_set, Ns, ns_lookup} from "./js_src/ns.js"
-import {check, Reduce} from "./js_src/check.js";
+import {deduce, Reduce} from "./js_src/check2.js";
 import fs from "node:fs";
 
 
@@ -20,17 +20,17 @@ let check_unit = (stmts, ns) => {
 		switch(term.type){
 			case "definition": ns_set(ns, term.name, term.def); break;
 			case "derivation": {
-				let ret = check(ns, term.rule);
-				if(ret.type != "ded_derivation" || ret.prop == null){
+				let ret = deduce(ns, term.rule);
+				if(ret.type != "deduction" || ret.prop == null){
 					Log("failed to derive: " + print_term(term.name));
 					return log;
 				}
 
-				ns_set(ns, term.name, ret);
 
+				ns_set(ns, term.name, ret);
 				if(term.name.type == "ref"){
 					if(term.dtype){
-						if(!term_eq(Reduce(term.dtype, ns), ret.prop.prop)){
+						if(!term_eq(Reduce(term.dtype, ns), ret.proof.prop)){
 							Log(print_term(term.name) + " doesn't prove '" 
 								+ print_term(term.dtype) + "' but rather '" 
 								+ print_term(ret.prop_type) + "'.");
@@ -40,7 +40,7 @@ let check_unit = (stmts, ns) => {
 						Log(print_term(term.name), print_term(term.dtype));
 						ret.prop_type = term.dtype;
 					}else{
-						Log(print_term(term.name), print_term(ret.prop_type));
+						Log(print_term(term.name), print_term(ret.prop));
 					}
 				}
 			break;
@@ -67,7 +67,55 @@ let check_file = (file, watch) => {
 
 
 	let ns = Ns();
-	Object.entries(zf_rules).map(([name, fn]) => ns_set(ns, Ref(name), Rule(name, fn, [])));
+
+
+	{
+
+	Object.entries(zf_rules).map(([name, fn]) => {
+		let q = (rule) => {
+			if(!rule.length)
+				return rule;
+			let args = Array(rule.length).fill().map((v, i) => "a" + i);
+			return eval(`(${args}) => {
+				let res = rule(${args}); 
+				console.log(print_term(res) +  " : " + name + " " + [${args}].map(v => print_term(v)).join(" ")); 
+				return res;
+			}`);
+		};
+
+		ns_set(ns, Ref(name), Rule(name, fn, fn.length ?? 0));
+	});
+
+
+
+	/*
+	let thm_lut = {};
+	let memo = {};
+	let thm_num = 0;
+	Object.entries(zf_rules).map(([name, rule]) => {
+
+		if(rule.length == null || rule.length == 0){
+			ns_set(ns, Ref(name), Rule(name, name, 0));
+			return;
+		}
+
+		let args = Array(rule.length).fill(0).map((v, i) => "a" + i);
+		ns_set(ns, Ref(name), Rule(name, eval(`(${args})=>{
+			let str = "${name}" + "(" + [${args}].map(v => v.type == "theorem" 
+				? "t" + v.thm_num
+				: "ZF\`" + print_term(v) + "\`").join(",") + ")";
+
+			if(memo[str])
+				return memo[str];
+
+			let th = {type: "theorem", str};
+			th.thm_num = thm_num++;
+			thm_lut[th.thm_num] = th;
+			return memo[str] = th;
+		}`), rule.length));
+	});
+	*/
+	}
 
 	let running = false;
 	let state = ((x) => [x, check_unit(x, ns)])(get_unit());
@@ -122,5 +170,6 @@ if(process.argv.length <= 2){
 	args = args.filter(v => v[0] == "-");
 
 	check_file(files[0], args.some(v => v == "--watch"));
+
 }
 

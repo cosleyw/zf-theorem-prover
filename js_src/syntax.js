@@ -4,7 +4,7 @@ export const Ref = (name) => ({type: "ref", name});
 export const Gen = (arg, body) => ({type:"gen", arg, body});
 export const In = (member, set) => ({type:"in", member, set});
 
-export const Rule = (name, fn, args) => ({type: "rule", name, fn, args});
+export const Rule = (name, fn, n_args, args = []) => ({type: "rule", name, fn, args, n_args});
 export const Dlam = (arg, arg_type, body) => ({type:"dlam", arg, arg_type, body});
 export const Lam = (arg, body) => ({type:"lam", arg, body});
 export const Match = (arg, cases) => ({type:"match", arg, cases});
@@ -121,7 +121,7 @@ let zf_prop = (nxt) => {
 	return expr(nxt);
 }
 
-let ZF = (str) => all(zf_prop, wspace, Take(null))(x=>x)(State(str[0])).stack[0];
+export const ZF = (str) => all(zf_prop, wspace, Take(null))(x=>x)(State(str[0])).stack[0];
 
 export const print_term = (term) => {
 	let symbols = 0;
@@ -140,6 +140,9 @@ export const print_term = (term) => {
 	switch(term.type){
 		case "derived":
 			str += "|- " + print_term_(term.prop);
+			break;
+		case "deduction":
+			str += print_term_(term.proof) + " : " + print_term_(term.prop);
 			break;
 		case "ns_ref":
 			return term.name.join("::");
@@ -231,5 +234,6 @@ let zf_unit = (nxt) => {
 	)(nxt);
 }
 
+export const ZF_unit = (str) => all(zf_unit, wspace, Take(null))(x=>x)(State(str[0])).stack[0];
 export const zf_parse = (str) => all(zf_unit, wspace, Take(null))(x => x)(State(str));
 
