@@ -14,6 +14,7 @@ let Lam = (arg, body) => ({type:"lam", arg, body});
 let Rule = (name, fn, n_args, args = []) => ({type: "rule", name, fn, args, n_args});
 let Dlam = (arg, arg_type, body) => ({type:"dlam", arg, arg_type, body});
 let Match = (arg, cases) => ({type:"match", arg, cases});
+let Exact = (prop) => ({type:"exact", prop});
 
 const and = (a, b) => Not(Arrow(a, Not(b)));
 const or = (a, b) => Arrow(Not(a), b);
@@ -32,8 +33,9 @@ let subst = (term, x, val) => {
 				let nr = Ref(Symbol());
 				return Dlam(nr, type, subst(subst(term.body, term.arg, nr), x, val));
 			}
-			return term;
-		}case "lam":
+
+			return Dlam(term.arg, type, term.body);
+		} case "lam":
 			if(term.arg.name != x.name){
 				let nr = Ref(Symbol());
 				return Lam(nr, subst(subst(term.body, term.arg, nr), x, val));
@@ -59,8 +61,31 @@ let subst = (term, x, val) => {
 			return In(subst(term.member, x, val), subst(term.set, x, val));
 		case "rule":
 			return term;
-		case "match": //TODO
+		case "match":
+			if(term.arg.name != x.name){
+				let nr = Ref(Symbol());
+				return Match(nr, term.cases.map(([pattern, body]) => {
+					let fv = pattern_fv(pattern);
+					let [p, b] = [...fv].reduce(([pattern, body], [name, sym]) => 
+						[subst(pattern, Ref(name), sym), subst(body, Ref(name), sym)]
+					, [pattern, body]);
+
+					return [match_exact_subst(match_exact_subst(p, term.arg, nr), x, val), 
+						subst(subst(b, term.arg, nr), x, val)];
+				}));
+			}
+
+			return term;
+		case "exact":
+			return term;
+		case "deduction":
+		case "partial_deduction":
+			return term; //TODO is this right?
+
 	}
+
+	console.log(term);
+	throw new Error("cannot subst");
 }
 
 let free_in_ded = (x, term) => {
@@ -97,10 +122,6 @@ export const Reduce = (term, env, bound = {}) => {
 			if(!bound[term.name] && val != null && val.type != "derived")
 				return val;
 			return term;
-		} case "dlam": {
-			let n_bound = {...bound};
-			n_bound[term.arg.name] = true;
-			return Dlam(term.arg, Reduce(term.arg_type, env, n_bound), Reduce(term.body, env, n_bound))
 		} case "lam":
 			return term;
 		case "app":
@@ -118,6 +139,8 @@ export const Reduce = (term, env, bound = {}) => {
 			return App(func, arg);
 		case "arrow":
 			return Arrow(Reduce(term.left, env, bound), Reduce(term.right, env, bound));
+		case "exact":
+			return Exact(Reduce(term.prop, env, bound));
 		case "not":
 			return Not(Reduce(term.prop, env, bound));
 		case "gen": {
@@ -128,8 +151,115 @@ export const Reduce = (term, env, bound = {}) => {
 			return In(Reduce(term.member, env, bound), Reduce(term.set, env, bound));
 		case "rule":
 			return term;
+		case "deduction":
+		case "partial_deduction":
+		case "dlam":
+		case "match":
+			return term;
+	}
+
+	console.log(term);
+	throw new Error("cannot reduce");
+}
+
+let match_exact_subst = (term, x, val) => {
+	switch(term.type){
+		case "ref":
+			return term;
+		case "arrow":
+			return Arrow(match_exact_subst(term.left, x, val), match_exact_subst(term.right, x, val));
+		case "gen": {
+			let nr = Ref(Symbol());
+			return term.arg.name == x.name ? term 
+				: Gen(nr, match_exact_subst(subst(term.body, term.arg, nr), x, val));
+		} case "not":
+			return Not(match_exact_subst(term.prop, x, val));
+		case "exact":
+			return {type:"exact", prop: subst(term.prop, x, val)};
 	}
 }
+
+let pattern_fv = (term) => {
+	switch(term.type){
+		case "ref": {
+			let env = new Map();
+			env.set(term.name, Ref(Symbol()));
+			return env;
+		} case "arrow": {
+			let e1 = pattern_fv(term.left);
+			let e2 = pattern_fv(term.right);
+			return new Map([...e1, ...e2]);
+		} case "gen": {
+			let e1 = pattern_fv(term.body);
+			delete e1.delete(term.arg.name);
+			return e1;
+		} case "not":
+			return pattern_fv(term.prop);
+		case "exact":
+			return new Map();
+	}
+	return new Map();
+}
+
+let free_in_pattern = (x, term) => {
+	switch(term.type){
+		case "ref":
+			return term.name == x.name;
+		case "arrow":
+			return free_in_pattern(x, term.left) || free_in_pattern(x, term.right);
+		case "gen":
+			return term.arg.name == x.name || free_in_pattern(x, term.body);
+		case "not":
+			return free_in_pattern(x, term.prop);
+		case "exact":
+			return false;
+	}
+
+	return false;
+}
+
+
+
+
+//lots of problems with variable scope...
+let fill_pattern = (pattern, term, env, bound = {}, hs = []) => {
+	if(!(pattern.type == "ref" || pattern.type == "exact") && pattern.type != term.type)
+		return false;
+
+	switch(pattern.type){
+		case "ref": {
+			if(bound[pattern.name])
+				return pattern.name == term.name;
+
+			let lam = hs.reduceRight((a, b) => Lam(b, a), term);
+			if(env.get(pattern.name) == null)
+				env.set(pattern.name, lam);
+
+			let eq = (t1, t2) => {
+				if(t1.type == t2.type && t1.type == "lam")
+					return term_eq(t1.arg, t2.arg) && eq(t1.body, t2.body);
+				return term_eq(t1, t2);
+			}
+
+			return eq(env.get(pattern.name), lam);
+		} case "arrow":
+			return fill_pattern(pattern.left, term.left, env, bound, hs) 
+				&& fill_pattern(pattern.right, term.right, env, bound, hs);
+		case "in":
+			return fill_pattern(pattern.member, term.member, env, bound, hs) 
+				&& fill_pattern(pattern.set, term.set, env, bound, hs);
+		case "gen": {
+			let n_bound = {...bound};
+			n_bound[pattern.arg.name] = true;
+			return fill_pattern(pattern.body, subst(term.body, term.arg, pattern.arg), env, 
+				n_bound, [...hs, pattern.arg]);
+		} case "not": {
+			return fill_pattern(pattern.prop, term.prop, env, bound, hs);
+		} case "exact": 
+			return term_eq(pattern.prop, term);
+	}
+}
+
 
 
 
@@ -153,55 +283,31 @@ export let deduce = (ns, term) => {
 	let Z8 = ns_get(ns, Ref("Z8")).fn;
 	
 	let deduction = (prop, proof, rprop = null) => {
-		/*if(proof == null){
-			throw new Error("huh??");
+		if(proof == null){
+			throw new Error("not a proof");
 		}
 
-		if(!term_eq(proof.prop, Reduce(prop, ns)) || (rprop && !term_eq(proof.prop, rprop))){
+		let t1;
+		if((t1 = !term_eq(proof.prop, Reduce(prop, ns))) || (rprop && !term_eq(proof.prop, rprop))){
 			console.log("huh:\n", 
-				print_term(prop), "\n",
-				print_term(rprop), "\n",
-				print_term(proof), "\n\n");
+				print_term(Reduce(prop, ns)), "\n\n",
+				print_term(rprop), "\n\n",
+				print_term(proof), "\n\n", t1);
 			throw new Error("huh?");
-		}*/
+		}
 		return {type:"deduction", prop, rprop: rprop ?? Reduce(prop, ns), proof};
 	};
 	let deduction_rules = {
-		I1: (a, b) => deduction(
-			a.type == "arrow"
-			? a.left
-			: App(a, b), 
-			I1(a, b)),
+		I1: (a, b) => deduction(a.type == "arrow" ? a.left : App(a, b), I1(a, b)),
 		I2: (x, t) => deduction(Gen(x, t), I2(x, t)),
 		A1: (a, b) => deduction(Arrow(a, Arrow(b, a)), A1(a, b)),
-		A2: (a, b, c) => deduction(
-			Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c))),
-			A2(a, b, c)
-		),
-		A3: (a, b) => deduction(
-			Arrow(Arrow(Not(a), Not(b)), Arrow(b, a)),
-			A3(a, b)
-		),
-		A4: (a, v) => deduction(
-			Arrow(a, subst(a.body, a.arg, v)),
-			A4(a, v)
-		),
-		A5: (x, a, b) => deduction(
-			Arrow(Gen(x, Arrow(a, b)), Arrow(a, Gen(x, b))),
-			A5(x, a, b)
-		),
-		Z0: () => deduction(
-			ZF`!\\/x.!\\/y.!y#x`,
-			Z0
-		),
-		Z1: () => deduction(
-			ZF`\\/x.\\/y.(\\/z.!((z#x->z#y)->!(z#y->z#x)))->(\\/z.!((x#z->y#z)->!(y#z->x#z)))`,
-			Z1
-		),
-		Z2: () => deduction(
-			ZF`\\/x.(!\\/a.!a#x)->(!\\/y.!!(y#x->!!(!\\/z.!!(z#y->!z#x))))`,
-			Z2
-		),
+		A2: (a, b, c) => deduction(Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c))), A2(a, b, c)),
+		A3: (a, b) => deduction(Arrow(Arrow(Not(a), Not(b)), Arrow(b, a)), A3(a, b)),
+		A4: (a, v) => deduction(Arrow(a, subst(a.body, a.arg, v)), A4(a, v)),
+		A5: (x, a, b) => deduction(Arrow(Gen(x, Arrow(a, b)), Arrow(a, Gen(x, b))), A5(x, a, b)),
+		Z0: () => deduction(ZF`!\\/x.!\\/y.!y#x`,Z0),
+		Z1: () => deduction(ZF`\\/x.\\/y.(\\/z.!((z#x->z#y)->!(z#y->z#x)))->(\\/z.!((x#z->y#z)->!(y#z->x#z)))`, Z1),
+		Z2: () => deduction(ZF`\\/x.(!\\/a.!a#x)->(!\\/y.!!(y#x->!!(!\\/z.!!(z#y->!z#x))))`, Z2),
 		Z3: (z, x, p) => {
 			let nr = Ref(Symbol());
 			return deduction(
@@ -209,20 +315,11 @@ export let deduce = (ns, term) => {
 				Z3(z, x, p)
 			);
 		},
-		Z4: () => deduction(
-			ZF`\\/x. \\/y.!\\/z.!!(x#z->!y#z)`,
-			Z4
-		),
-		Z5: () => deduction(
-			ZF`\\/w. !\\/a.!\\/y.\\/x.!(x#y->!y#w)->x#a`,
-			Z5
-		),
+		Z4: () => deduction(ZF`\\/x. \\/y.!\\/z.!!(x#z->!y#z)`, Z4),
+		Z5: () => deduction(ZF`\\/w. !\\/a.!\\/y.\\/x.!(x#y->!y#w)->x#a`, Z5),
 		Z6: null,
 		//Z7: null,
-		Z8: () => deduction(
-			ZF`\\/x.!\\/y.!\\/z.(\\/a.a#z->a#x)->z#y`,
-			Z8
-		),
+		Z8: () => deduction(ZF`\\/x.!\\/y.!\\/z.(\\/a.a#z->a#x)->z#y`, Z8),
 	};
 
 	let thid = (a) => I1(I1(A2(a, Arrow(a, a), a), A1(a, Arrow(a, a))), A1(a, a));
@@ -231,15 +328,20 @@ export let deduce = (ns, term) => {
 	let sk_deduce = (ns, term, bound = {}) => {
 		switch(term?.type){
 		case "lam": //fallthrough
+		case "match": 
 		case "deduction":
+		case "partial_deduction":
 			return term;
 		case "ref":
 			if(bound[term.name])
 				return partial_deduction(bound[term.name][0], term, bound[term.name][1]);
 		case "ns_ref": //fallthrough
+			if(ns_get(ns,term) == null)
+				throw new Error(print_term(term) + " not defined :/");
 			return sk_deduce(ns, ns_get(ns, term), bound);
 		case "dlam": {
 			let at = Reduce(term.arg_type, ns);
+
 			if(term_eq(term.body, term.arg))
 				//\x.x = S K K
 				return deduction(Arrow(term.arg_type, term.arg_type), thid(at), Arrow(at, at));
@@ -308,9 +410,55 @@ export let deduce = (ns, term) => {
 			if(sk_body.term.type == "app"){
 				//\x.M N = S (\x. M) (\x. N)
 				let f = sk_deduce(ns, Dlam(term.arg, term.arg_type, sk_body.term.func), bound);	
-				let a = sk_deduce(ns, Dlam(term.arg, term.arg_type, sk_body.term.arg), bound);
+
+
 				let ft = f.rprop; //Reduce(f.prop, ns);
-				
+
+
+				//TODO is this needed?
+				/*
+				if(ft.right.type == "gen" && sk_body.term.arg.type == "ref"){
+
+					console.log(f.prop, sk_body.term.arg);
+					if(f.type == "deduction"){
+						return deduction(
+							Arrow(term.arg_type, f.prop.right.type == "gen"
+							? subst(f.prop.right.body, f.prop.right.arg, sk_body.term.arg)
+							: App(f.prop.right, sk_body.term.arg)),
+
+							I1(I1(A2(ft.left, ft.right, subst(ft.right, ft.right.arg, sk_body.term.arg)),
+								I1(A1(Arrow(ft.right, subst(ft.right.body, ft.right.arg, sk_body.term.arg)), term.arg_type),
+									A4(ft.right, sk_body.term.arg))),
+								f.proof),
+							Arrow(ft.left, subst(ft.body, ft.arg, sk_body.term.arg))
+						);
+					}
+
+					return partial_deduction(
+						Arrow(term.arg_type, f.prop.right.type == "gen"
+						? subst(f.prop.right.body, f.prop.right.arg, sk_body.term.arg)
+						: App(f.prop.right, sk_body.term.arg)),
+						App(
+							deduction(
+								Arrow(ft, Arrow(term.arg_type, f.prop.right.type == "gen"
+								? subst(f.prop.right.body, f.prop.right.arg, sk_body.term.arg)
+								: App(f.prop.right, sk_body.term.arg))),
+
+								I1(A2(ft.left, ft.right.left, subst(ft.right, ft.right.arg, sk_body.term.arg)),
+									I1(A1(Arrow(ft.right, subst(ft.right.body, ft.right.arg, sk_body.term.arg)), term.arg_type),
+										A4(ft.right, sk_body.term.arg))),
+								Arrow(ft, Arrow(ft.left, subst(ft.right.body, ft.right.arg, sk_body.term.arg)))
+							),
+							f.term
+						),
+						Arrow(term.arg_type, subst(ft.body, ft.arg, term.arg))
+					);
+				}
+				*/
+
+
+
+				let a = sk_deduce(ns, Dlam(term.arg, term.arg_type, sk_body.term.arg), bound);
 				if(f.type == "deduction" && a.type == "deduction"){
 					return deduction(
 						Arrow(term.arg_type, f.prop.right.type == "arrow" 
@@ -365,6 +513,31 @@ export let deduce = (ns, term) => {
 			if(f.type == "lam")
 				return sk_deduce(ns, Reduce(term, ns), bound);
 
+			if(f.type == "match"){
+				let arg = sk_deduce(ns, term.arg, bound);
+
+				if(arg.type == "deduction" || arg.type == "partial_deduction"){
+					let at = arg.rprop;
+
+					for(let i = 0; i < f.cases.length; i++){
+						let [pattern, body] = f.cases[i];
+
+						let env = new Map();
+
+						if(fill_pattern(Reduce(pattern, ns), at, env)){
+							let v = [...env].reduceRight(
+								(a, [x, val]) => Lam(Ref(x), a), body);
+							v = [...env].reduce((a, [x, val]) => App(a, val), App(Lam(f.arg, v), arg));
+							return sk_deduce(ns, v, bound);
+						}
+
+					}
+
+				}
+
+				throw new Error("cannot apply match");
+			}
+
 			let ft = f.rprop; //Reduce(f.prop, ns);
 			if(ft.type == "gen" && term.arg.type == "ref"){
 				if(f.type == "deduction"){
@@ -378,7 +551,9 @@ export let deduce = (ns, term) => {
 				}
 
 				return partial_deduction(
-					App(f.prop, term.arg),
+					f.prop.type == "gen"
+					? subst(f.prop.body, f.prop.arg, term.arg)
+					: App(f.prop, term.arg),
 					App(
 						deduction(
 							Arrow(ft, 
@@ -431,39 +606,11 @@ export let deduce = (ns, term) => {
 		}
 		}
 
-		console.log("huh:", print_term(term.term ?? term));
-		throw new Error("huh?");
+		console.log(term, print_term(term?.term ?? term));
+		throw new Error("cannot deduce");
 	}
 
 	return sk_deduce(ns, term);
 };
 
 
-/*
-let dummy_ns = [{}, {}];
-let memo = {};
-let thm_lut = {};
-let thm_num = 0;
-Object.entries(zf_rules).map(([name, rule]) => {
-
-	if(rule.length == null || rule.length == 0){
-		ns_set(dummy_ns, Ref(name), Rule(name, name, 0));
-		return;
-	}
-
-	let args = Array(rule.length).fill(0).map((v, i) => "a" + i);
-	ns_set(dummy_ns, Ref(name), Rule(name, eval(`(${args})=>{
-		let str = "${name}" + "(" + [${args}].map(v => v.type == "theorem" 
-			? "t" + v.thm_num
-			: "ZF\`" + print_term(v) + "\`").join(",") + ")";
-
-		if(memo[str])
-			return memo[str];
-
-		let th = {type: "theorem", str};
-		th.thm_num = thm_num++;
-		thm_lut[th.thm_num] = th;
-		return memo[str] = th;
-	}`), rule.length));
-});
-*/

@@ -8,6 +8,7 @@ export const Rule = (name, fn, n_args, args = []) => ({type: "rule", name, fn, a
 export const Dlam = (arg, arg_type, body) => ({type:"dlam", arg, arg_type, body});
 export const Lam = (arg, body) => ({type:"lam", arg, body});
 export const Match = (arg, cases) => ({type:"match", arg, cases});
+export const Exact = (prop) => ({type:"exact", prop});
 export const App = (func, arg) => ({type:"app", func, arg});
 
 export const NSref = (name) => ({type: "ns_ref", name});
@@ -38,6 +39,7 @@ let zf_prop = (nxt) => {
 			expr, popSt(body => popSt(arg => pushSt(Lam(arg, body)))));
 		
 
+		/*
 		let pattern = (nxt) => {
 			let forall = all(wspace, Take("\\"), Del, Take("/"), Del, ref, wspace, Take("."), Del, 
 				pattern, popSt(body => popSt(arg => pushSt(Gen(arg, body)))));
@@ -46,7 +48,7 @@ let zf_prop = (nxt) => {
 				ref, 
 				all(wspace, Take("("), Del, pattern, wspace, Take(")"), Del),
 				all(wspace, Take("["), Del, expr, wspace, Take("]"), Del, 
-					popSt(expr => pushSt({type: "exact", prop: expr})))
+					popSt(expr => pushSt(Exact(expr))))
 			);
 
 			let not_expr = (nxt) => some(
@@ -70,8 +72,9 @@ let zf_prop = (nxt) => {
 
 			return arrow_expr(nxt);
 		}
+		*/
 
-		let match_case = all(wspace, Take("|"), Del, pattern, wspace, Take("="), Del, Take(">"), Del, expr, 
+		let match_case = all(wspace, Take("|"), Del, expr, wspace, Take("="), Del, Take(">"), Del, expr, 
 			popSt(body => popSt(match => pushSt([match, body]))));
 
 		let match = all(wspace, Take("\\"), Del, ref, wspace, Take("."), Del, 
@@ -87,7 +90,9 @@ let zf_prop = (nxt) => {
 		let primary_expr = some(
 			in_stmt, 
 			ns_ref, 
-			all(wspace, Take("("), Del, expr, wspace, Take(")"), Del)
+			all(wspace, Take("("), Del, expr, wspace, Take(")"), Del),
+			all(wspace, Take("["), Del, expr, wspace, Take("]"), Del, 
+				popSt(expr => pushSt(Exact(expr))))
 		);
 
 		let not_expr = (nxt) => some(
@@ -136,6 +141,10 @@ export const print_term = (term) => {
 	}
 
 	let print_term_ = (term, left = false) => {
+		if(term?.type == null){
+			console.log(term);
+			throw new Error("not a term");
+		}
 		let str = "";
 	switch(term.type){
 		case "derived":
@@ -143,6 +152,9 @@ export const print_term = (term) => {
 			break;
 		case "deduction":
 			str += print_term_(term.proof) + " : " + print_term_(term.prop);
+			break;
+		case "partial_deduction":
+			str += print_term_(term.term) + " : " + print_term_(term.prop);
 			break;
 		case "ns_ref":
 			return term.name.join("::");

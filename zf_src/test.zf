@@ -533,7 +533,3 @@ id_map::1
 -- id_map2 : { b : \/Q. iff Q#S (exists \x. and x#A (pair x x Q)) }
 -- \/v. \/Q. iff_intro (and (pair x v Q) Q#S) (eq v y) ; 
 -- need pair equality :/
-
-
-balls : A1 x#x y#y ;
-
