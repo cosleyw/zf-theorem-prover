@@ -178,7 +178,7 @@ unique_eq := \a. | !\/x.!!(A -> B) => \/x. \/y. {p1 : A x} {p2 : A y}
 	exists_strip (exists_mp a \/z. {v : and (A z) (\/q. (A q) -> (eq z q))}
 		eq_trans x z y (eq_symm z x (and_r v x p1))
 			(and_r v y p2)) ;
-
+unique_exists := \B. { p1 : unique B } exists_mp p1 \/x. {p2 : and (B x) (\/y. (B y) -> (eq x y)) } and_l p2;
 
 
 
@@ -800,7 +800,7 @@ Map := \A. \B. \S. and
 	\/x. x#A -> (unique \y. exists \P. and (pair x y P) P#S)
 ;
 
-Apply := \S. \x. \v. and (exists \A. exists \B. Map A B S) (exists \Q. and Q#S (pair x v Q)) ;
+Apply := \S. \x. \v. and (exists \A. exists \B. Map A B S) (exists \Q. and (pair x v Q) Q#S) ;
 
 
 id_map := \A. \S. \/z. iff z#S (exists \x. and x#A (pair x x z)) ;
@@ -812,8 +812,26 @@ id_map_subset_product : \/A. \/Q. \/S. (cartesian_product A A Q) -> (id_map A S)
 	\/V. {p3 : and V#A (pair V V z)}
 	pair_in_product V V A A Q p0 (and_l p3) (and_l p3) z (and_r p3))
 ;
+	
 
-id_is_map : { p1 : id_map A S } \/x. { p2 : x#A } 
+id_map_exists : \/A. exists (id_map A) : \/A.
+	exists_strip (exists_mp (cartesian_product_exists A A)
+	\/Q. { p1 : cartesian_product A A Q }
+	exists_mp (subset_exists (\z. exists \x. and x#A (pair x x z)) Q)
+	\/S. { p2 : \/z. iff z#S (and z#Q (exists \x. and x#A (pair x x z)))}
+	\/z. iff_trans (p2 z)
+	(iff_intro
+	({ p3 : and z#Q (exists \x. and x#A (pair x x z))} (and_r p3))
+	{ p3 : exists \x. and x#A (pair x x z)}
+		and_intro (exists_strip (exists_mp p3
+		\/x. { p4 : and x#A (pair x x z) }
+		pair_in_product x x A A Q p1 (and_l p4) (and_l p4) z (and_r p4)))
+		p3))
+;
+
+
+
+id_is_map::0 : { p1 : id_map A S } \/x. { p2 : x#A } 
 	(\/y1. \/y2. 
 	{p3 : exists \P. and (pair x y1 P) P#S }
 	{p4 : exists \P. and (pair x y2 P) P#S }
@@ -834,7 +852,65 @@ id_is_map : { p1 : id_map A S } \/x. { p2 : x#A }
 	(cdr_eq P2 x2 y2 (pair_cdr x2 x2 P2 (and_r p8)) (pair_cdr x y2 P2 (and_l p6)))))))))
 ;
 
+id_is_map::1 : (id_map A S) -> \/x. x#A -> (unique \y. exists \P. and (pair x y P) P#S)  : { p1 : id_map A S }  \/f. {p2 : f#A}
+	unique_intro
+	(exists_intro (\y. exists \P. and (pair f y P) P#S) f
+	(exists_mp (pair_exists f f)
+	\/p. {p3 : pair f f p}
+		and_intro p3
+		(iff_rl (p1 p) (exists_intro (\f. and f#A (pair f f p)) f (and_intro p2 p3)))))
+	(id_is_map::0 p1 f p2) 
+;
 
+id_is_map : \/A. \/S. (id_map A S) -> (Map A A S) : \/A. \/S. { p1 : id_map A S } 
+	and_intro
+	(exists_mp (cartesian_product_exists A A)
+	\/Q. {p2 : cartesian_product A A Q } 
+		and_intro p2 (id_map_subset_product A Q S p2 p1))
+	(id_is_map::1 p1)
+;
+
+map_apply : \/A. \/B. \/f. (Map A B f) -> \/x. x#A -> (exists \y. Apply f x y) : \/A. \/B. \/f. { p1 : Map A B f }  \/x. {p2 : x#A}
+	exists_mp (unique_exists (\y. exists \P. and (pair x y P) P#f) ((and_r p1) x p2))
+	\/y. { p3 : exists \P. and (pair x y P) P#f}
+		and_intro (exists_intro (\A. exists \B. Map A B f) A (exists_intro (\B. Map A B f) B p1))
+			p3
+;
+
+apply_type : \/A. \/B. \/f. {p1 : Map A B f} \/x. \/y. {p2 : Apply f x y}
+	exists_strip(exists_strip(exists_strip(exists_strip(exists_mp (and_r p2)
+	\/Q. {p3 : and (pair x y Q) Q#f}
+	exists_mp (and_l p1)
+	\/S. {p4 : and (cartesian_product A B S) (subset f S)}
+	exists_mp (iff_lr (and_l p4 Q) ((and_r p4) Q (and_r p3)))
+	\/X. {p5 : exists \y. and (and X#A y#B) (pair X y Q)}
+	exists_mp p5
+	\/Y. {p6 : and (and X#A Y#B) (pair X Y Q)}
+	iff_rl (eq_ext (cdr_eq Q y Y 
+	(pair_cdr x y Q (and_l p3))
+	(pair_cdr X Y Q (and_r p6))) B) (and_r (and_l p6))))))
+;
+
+apply_arg_type : \/A. \/B. \/f. {p1 : Map A B f} \/x. \/y. {p2 : Apply f x y}
+	exists_strip(exists_strip(exists_strip(exists_strip(exists_mp (and_r p2)
+	\/Q. {p3 : and (pair x y Q) Q#f}
+	exists_mp (and_l p1)
+	\/S. {p4 : and (cartesian_product A B S) (subset f S)}
+	exists_mp (iff_lr (and_l p4 Q) ((and_r p4) Q (and_r p3)))
+	\/X. {p5 : exists \y. and (and X#A y#B) (pair X y Q)}
+	exists_mp p5
+	\/Y. {p6 : and (and X#A Y#B) (pair X Y Q)}
+	iff_rl (eq_ext (car_eq Q x X
+	(pair_car x y Q (and_l p3))
+	(pair_car X Y Q (and_r p6))) A) (and_l (and_l p6))))))
+;
+
+
+--map_compose : { p1 : Map Y Z f } {p2 : Map X Y g} \/x. {p3 : x#X}
+	--exists_mp (map_apply X Y g p2 x p3)
+	--\/y. {p4 : Apply g x y}
+	--p4
+--;
 
 test : testw ;
 
