@@ -61,6 +61,8 @@ const subst = (term, ref, value) => {
 }
 
 export const term_eq = (a, b) => {
+	if(a === b)
+		return true;
 	if(a.type != b.type)
 		return false;
 

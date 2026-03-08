@@ -1,7 +1,7 @@
 import {zf_parse, Ref, Rule, print_term} from "./js_src/syntax.js";
 import {zf_rules, term_eq} from "./js_src/zf.js";
 import {ns_get, ns_set, Ns, ns_lookup} from "./js_src/ns.js"
-import {deduce, Reduce} from "./js_src/check2.js";
+import {deduce, Reduce} from "./js_src/check.js";
 import fs from "node:fs";
 
 
@@ -10,7 +10,10 @@ let check_unit = (stmts, ns) => {
 	let log = [];
 
 	for(let i = 0; i < stmts.length; i++){
-		let Log = (...x) => log.push([i, x.join(" ")]);
+		let Log = (...x) => {
+			console.log(x.join(" "));
+			log.push([i, x.join(" ")]);
+		};
 		let term = stmts[i];
 		if(ns_get(ns, term.name) != null){
 			Log(print_term(term.name) + " already defined");
@@ -72,7 +75,10 @@ let check_file = (file, watch) => {
 		return res.stack[0];
 	}
 
-	let print_log = (log) => log.map(v => console.log(v[1]));
+	let print_log = (log) => {
+		console.clear();
+		log.map(v => console.log(v[1]));
+	}
 
 
 	let ns = Ns();
