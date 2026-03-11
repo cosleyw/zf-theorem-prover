@@ -205,6 +205,40 @@ subset_eq : \/A. \/B. (subset A B) -> (subset B A) -> (eq A B) :
 subset_exists := \B. \/y. Z3 y __YEAH_DONT_USE_THIS_REFERENCE_AGAIN__ (B __YEAH_DONT_USE_THIS_REFERENCE_AGAIN__);
 
 
+intersection := \x. \y. \S. \/a. iff a#S (and a#x a#y) ;
+intersection_l : \/A. \/B. \/S. (intersection A B S) -> (subset S A) : 
+	\/X. \/Y. \/S. {x : intersection X Y S} 
+		\/z. {v : z#S} and_l (iff_lr (x z) v) ;
+intersection_r : \/A. \/B. \/S. (intersection A B S) -> (subset S B) : 
+	\/X. \/Y. \/S. {x : intersection X Y S} 
+		\/z. {v : z#S} and_r (iff_lr (x z) v) ;
+not_in_intersection : \/X. \/Y. \/S. (intersection X Y S) -> \/z. !z#S -> (or !z#X !z#Y) :
+	\/X. \/Y. \/S. {x : intersection X Y S} 
+		\/z. {v : !z#S} not_and (contrapose (iff_rl (x z)) v) ;
+
+--TODO intersection_exists
+union := \x. \y. \S. \/a. iff a#S (or a#x a#y) ;
+union_l : \/A. \/B. \/S. (union A B S) -> (subset A S) : 
+	\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#L}
+		(iff_rl (y x)) (or_intro_l x#L x#R x) ;
+union_r : \/A. \/B. \/S. (union A B S) -> (subset B S) : 
+	\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#R}
+		(iff_rl (y x)) (or_intro_r x#L x#R x) ;
+union_comm::l : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> (subset S Q) : 
+	\/A. \/B. \/S. \/Q. {a : union A B S} {b : union B A Q} \/x. {x : x#S}
+		or_cases (iff_lr (a x) x)
+			({v : x#A} iff_rl (b x) (or_intro_r x#B x#A v))
+			({v : x#B} iff_rl (b x) (or_intro_l x#B x#A v)) ;
+union_comm : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> (eq S Q) : 
+	\/A. \/B. \/S. \/Q. { a : union A B S} {b : union B A Q}
+		subset_eq S Q
+			(union_comm::l A B S Q a b)
+			(union_comm::l B A Q S b a) ;
+
+--TODO union_exists
+
+
+
 
 powerset := \x. \S. \/z. iff z#S (subset z x) ;
 powerset_eq::l : \/X. \/A. \/B. (powerset X A) -> (powerset X B) -> (subset A B) : 
@@ -905,48 +939,32 @@ apply_arg_type : \/A. \/B. \/f. {p1 : Map A B f} \/x. \/y. {p2 : Apply f x y}
 	(pair_car X Y Q (and_r p6))) A) (and_l (and_l p6))))))
 ;
 
---map_compose : { p1 : Map Y Z f } {p2 : Map X Y g} \/x. {p3 : x#X}
-	--exists_mp (map_apply X Y g p2 x p3)
-	--\/y. {p4 : Apply g x y}
-	--p4
---;
+compose := \f. \g. \h. \/P. iff 
+	P#h
+	(exists \x. exists \y. exists \z. and (and (Apply f y z) (Apply g x y)) (pair x z P))
+;
 
-test : testw ;
+compose_subset_product : 
+\/X. \/Y. \/Z. \/f. \/g. \/h. \/S. (Map Y Z f) -> (Map X Y g) -> (compose f g h) -> (cartesian_product X Z S)
+-> (subset h S)
+: 
+\/X. \/Y. \/Z. \/f. \/g. \/h. \/S.
+{ p0a : Map Y Z f } { p0b : Map X Y g } { p1 : compose f g h } 
+{ p1b : cartesian_product X Z S } \/P. { p2 : P#h } 
+	exists_strip ( exists_strip( exists_strip(exists_mp (iff_lr (p1 P) p2)
+	\/x. { p3 : exists \y. exists \z. and (and (Apply f y z) (Apply g x y)) (pair x z P) }
+	exists_mp p3
+	\/y. { p4 : exists \z. and (and (Apply f y z) (Apply g x y)) (pair x z P) }
+	exists_mp p4	
+	\/z. { p5 : and (and (Apply f y z) (Apply g x y)) (pair x z P) }
+	pair_in_product x z X Z S p1b
+	(apply_arg_type X Y g p0b x y (and_r (and_l p5)))
+	(apply_type Y Z f p0a y z (and_l (and_l p5)))
+	P
+	(and_r p5))))
+;
 
 
-
-
-intersection := \x. \y. \S. \/a. iff a#S (and a#x a#y) ;
-intersection_l : \/A. \/B. \/S. (intersection A B S) -> (subset S A) : 
-	\/X. \/Y. \/S. {x : intersection X Y S} 
-		\/z. {v : z#S} and_l (iff_lr (x z) v) ;
-intersection_r : \/A. \/B. \/S. (intersection A B S) -> (subset S B) : 
-	\/X. \/Y. \/S. {x : intersection X Y S} 
-		\/z. {v : z#S} and_r (iff_lr (x z) v) ;
-not_in_intersection : \/X. \/Y. \/S. (intersection X Y S) -> \/z. !z#S -> (or !z#X !z#Y) :
-	\/X. \/Y. \/S. {x : intersection X Y S} 
-		\/z. {v : !z#S} not_and (contrapose (iff_rl (x z)) v) ;
-
---TODO intersection_exists
-union := \x. \y. \S. \/a. iff a#S (or a#x a#y) ;
-union_l : \/A. \/B. \/S. (union A B S) -> (subset A S) : 
-	\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#L}
-		(iff_rl (y x)) (or_intro_l x#L x#R x) ;
-union_r : \/A. \/B. \/S. (union A B S) -> (subset B S) : 
-	\/L. \/R. \/S.  {y : union L R S} \/x. {x : x#R}
-		(iff_rl (y x)) (or_intro_r x#L x#R x) ;
-union_comm::l : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> (subset S Q) : 
-	\/A. \/B. \/S. \/Q. {a : union A B S} {b : union B A Q} \/x. {x : x#S}
-		or_cases (iff_lr (a x) x)
-			({v : x#A} iff_rl (b x) (or_intro_r x#B x#A v))
-			({v : x#B} iff_rl (b x) (or_intro_l x#B x#A v)) ;
-union_comm : \/A. \/B. \/S. \/Q. (union A B S) -> (union B A Q) -> (eq S Q) : 
-	\/A. \/B. \/S. \/Q. { a : union A B S} {b : union B A Q}
-		subset_eq S Q
-			(union_comm::l A B S Q a b)
-			(union_comm::l B A Q S b a) ;
-
---TODO union_exists
 
 
 
