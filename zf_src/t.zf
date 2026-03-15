@@ -1,0 +1,1467 @@
+::let := \x.\f. f x ;
+
+::and := \a.\b. !(a -> !b) ;
+::or := \a.\b. !a -> b ;
+::iff := \a.\b. ::and (a -> b) (b -> a);
+::exists := \fn.!\/x.!(fn x);
+::eq := \a.\b. (\/z. ::iff z#a z#b) ;
+
+
+--law of denied antecedent !p -> p -> q
+::loda := \p.\q. {x : !p} ::A3 q p (::A1 !p !q x) ;
+
+--law of double negation  !!p -> p
+::ldn := \x. | !!p => (::A3 p !!p) (::loda !p !!!p x) x; 
+--converse law of double negation p -> !!p
+::cldn := \x. | p => (::A3 !!p p) ({x : !!!p} ::ldn x) x ;
+
+-- ::clavius's law (~q -> q) -> q
+::cl := \q. { a : !q -> q } (::A3 q (!q -> q)) 
+	({b : !q} ::loda q !(!q -> q) b (a b)) a ;
+
+-- boolean case analysis (a -> b) -> (!a -> b) -> b
+::bool_cases := \a. | A -> B => {b : !A -> B} 
+	(::cl B) ({q : !B} a ((::A3 A !B) 
+		({c : !A } ::cldn (b c)) q)) ;
+
+
+-- (a -> b) -> (!b -> !a)
+-- (!a -> !b) -> (b -> a)
+
+::base_contrapose := \p. 
+	| x -> y => ::A3 !x !y ({v : !!x} ::cldn (p (::ldn v)));
+
+::not_contrapose := \p. 
+	| !x -> !y => ::A3 x y p ;
+
+::contrapose := \p. 
+	| !x -> !y => ::A3 x y p
+	| x -> y => ::A3 !x !y ({v : !!x} ::cldn (p (::ldn v)));
+
+
+
+-- a -> b -> ::and a b
+::and_intro := \f. | a => \g. | b => ({t : ::and a b} t) 
+	(::not_contrapose ({ q : !!(a -> !b) } ::ldn q f) g);
+
+-- ::and a b -> a
+::and_l := \p.
+	| ::and a b => ::not_contrapose (({q : !a} ::cldn (::loda a !b q))) p;
+
+-- ::and a b -> b
+::and_r := \p. 
+	| ::and a b => ::not_contrapose (({q : !b} ::cldn (::A1 !b a q))) p;
+
+-- ::and a b -> ::and b a
+::and_comm := \a. | ::and x y => ::and_intro (::and_r a) (::and_l a) ;
+
+
+
+
+-- a -> ::or a b
+::or_intro_l := \a. \b. { p : a } ({t : ::or a b} t) ({ q: !a } ::loda a b q p) ;
+
+-- b -> ::or a b
+::or_intro_r := \a. \b. {p : b} ({t : ::or a b} t) (::A1 b !a p) ;
+
+-- ::or case analysis (::or a b) -> (a -> c) -> (b -> c) -> c
+::or_cases := \P. | ::or A B => 
+		\Q. | [A] -> C => { q : B -> C } 
+			::bool_cases Q ({x : !A} q (P x));
+
+-- ::or a b -> ::or b a
+::or_comm := \a. | ::or x y =>
+	::or_cases a
+		(::or_intro_r y x)
+		(::or_intro_l y x) ;
+
+
+
+
+-- !(::and a b) -> ::or !a !b
+::not_and :=  \a. | !(::and x y) => ::or_comm (::base_contrapose (::ldn a)) ;
+
+-- !(::or a b) -> ::and !a !b
+::not_or := \a. | !(::or x y) => ({t : ::and !a !b} t) (::base_contrapose ({v1 : ::or x !!y} {v2 : !x} ::ldn (v1 v2)) a) ;
+
+
+
+
+
+-- A R -> (::exists \x. A x)
+::exists_intro := \A. \/R. {x : A R} 
+		({t : ::exists A} t) ((::A3 !(\/x. !(A x)) (A R) 
+		({y : !!(\/x. !(A x))} ::loda (A R) !(A R)
+			 (::ldn y R) x )) x) ;
+
+-- (::exists A) -> (\/x. (A x) -> (B x)) -> (::exists B);
+::exists_mp::1 := \A. \B. {x : ::exists A} {y : \/x. (A x) -> (B x)} 
+	({t : ::exists B} t) (::bool_cases
+		({v : (A _)} ::exists_intro B _ (y _ v))
+		(::not_contrapose {v : !(::exists B)} ::cldn 
+			(::loda (\/q. !(A q)) (A _) x 
+				\/q. ::base_contrapose ({t : A q} y q t) (::ldn v q))))
+;
+::exists_mp := \x. | ::exists \x. A => \y. | \/x. A -> B => ::exists_mp::1 A B x y;
+
+::exists_strip := \p. | ::exists \x. A =>
+	::bool_cases
+		({v : A _} v)
+		({v : !(A _)} ::loda (\/z. !(A _)) (A _) p (\/z. v))
+;
+
+-- (::exists \a. ::exists \b. F a b) -> (::exists \b. ::exists \a. F a b)
+::exists_flip := \A. | !\/a.!!\/b.!F =>
+	({t : ::exists \b. ::exists \a. F a b} t) (::bool_cases ({v : ::exists \b. ::exists \a. F a b} v)
+	{B : !(::exists \b. ::exists \a. F a b)} 
+	::loda (::exists \b. ::exists \a. F a b) (::exists \b. ::exists \a. F a b) B
+	(::exists_strip
+		(::exists_mp A
+		(\/a. {C : ::exists \b. F a b}
+			::loda (\/P. !(F a P)) (::exists \b. ::exists \a. F a b) C
+			(\/P. ::ldn (::ldn B P) a)))))
+;
+
+::_unpack_exists := \p. | ::exists \x. B => \f. \/x. {Q : B x} f x Q ;
+::unpack_exists := \p. | ::exists \x. B => \f. ::exists_strip (::exists_mp p (\/x. {p1 : B x} f x p1)) ;
+
+
+
+
+::iff_lr := ::and_l ;
+::iff_rl := ::and_r ;
+::iff_intro := \p. | a -> b => {q : b -> a} ({t : ::iff a b} t) (::and_intro p q) ;
+::iff_trans := \x. | ::iff a b => \y. | ::iff [b] c =>
+	::iff_intro
+		({v : a} ::iff_lr y (::iff_lr x v))
+		({v : c} ::iff_rl x (::iff_rl y v))
+;
+::iff_comm := \p. | ::iff a b => ::iff_intro (::iff_rl p) (::iff_lr p) ;
+::iff_mp := \x. | ::iff a b => \y. 
+	| [a] => ::iff_lr x y
+	| [b] => ::iff_rl x y ;
+
+
+::ax_pairing : \/x.\/y. ::exists \z. ::and x#z y#z : ::Z4 ;
+::ax_ext : \/x. \/y. (::eq x y) -> \/z. ::iff x#z y#z : ::Z1 ;
+::ax_union : \/w. ::exists \a. \/y. \/x. (::and x#y y#w) -> x#a : ::Z5 ;
+::ax_regularity : \/x. (::exists \a. a#x) -> 
+	(::exists \y. ::and y#x !(::exists \z. ::and z#y z#x)) : ::Z2 ;
+
+::subset := \A. \B.  \/x. x#A -> x#B ;
+::ax_powerset : \/x. ::exists \y. \/z.(::subset z x)->z#y : ::Z8;
+
+
+
+
+::eq_refl : \/a. ::eq a a : \/a.\/z. ::iff_intro ({x : z#a} x) ({x : z#a} x);
+::eq_symm : \/a. \/b. (::eq a b) -> (::eq b a) : 
+	\/a. \/b. { x : ::eq a b } \/z. ::iff_intro (::iff_rl (x z)) (::iff_lr (x z));
+::eq_trans : \/a. \/b. \/c. (::eq a b) -> (::eq b c) -> (::eq a c) : 
+	\/a. \/b. \/c. {x : ::eq a b} {y : ::eq b c} \/z. ::iff_trans (x z) (y z);
+::eq_ext := \p. | ::eq x y => ::ax_ext (x p) (y p) p ; --TODO figure out how you want this match syntax to behave...
+
+::not_in_eq : \/x. \/y. { p1 : ::eq x y } \/a. { p2 : !a#x }
+	::bool_cases
+		({ p3 : a#y } ::loda a#x !a#y p2 (::iff_rl (p1 a) p3))
+		{ p3 : !a#y } p3 ;
+
+::eq_not_in : \/x. \/y. { p1 : ::eq x y } \/a. { p2 : !x#a }
+	::bool_cases
+		({p3 : y#a} ::loda x#a !y#a p2 (::iff_rl (::eq_ext p1 a) p3))
+		({ p3 : !y#a } p3) ;
+
+
+
+
+::unique := \B. ::exists \x. ::and (B x) (\/y. (B y) -> (::eq x y)) ;
+-- (::exists A) -> (\/x. \/y. (A x) -> (A y) -> (::eq x y)) -> (::unique A)
+::unique_intro := \a. | ::exists \x. A => {b : \/x. \/y. (A x) -> (A y) -> (::eq x y)}
+	({t : ::unique A} t) (::exists_mp a (\/z. {v : A z} ::and_intro v (\/q. b z q v))) ;
+
+
+-- (::unique A) -> \/x. \/y. (A x) -> (A y) -> (::eq x y)
+::unique_eq := \a. | ::exists \x. !(A -> B) => \/x. \/y. {p1 : A x} {p2 : A y}
+	::exists_strip (::exists_mp a \/z. {v : ::and (A z) (\/q. (A q) -> (::eq z q))}
+		::eq_trans x z y (::eq_symm z x (::and_r v x p1))
+			(::and_r v y p2)) ;
+::unique_exists := \B. { p1 : ::unique B } ::exists_mp p1 \/x. {p2 : ::and (B x) (\/y. (B y) -> (::eq x y)) } ::and_l p2;
+
+
+
+
+::emptyset := \x.\/y.!y#x;
+::emptyset_exists : ::exists ::emptyset : ::Z0 ;
+::emptyset_eq : \/X. \/Y. (::emptyset X) -> (::emptyset Y) -> (::eq X Y): 
+	\/X. \/Y. {x : ::emptyset X} {y : ::emptyset Y} \/z.  ::iff_intro
+		({v : z#X} ::loda z#X (z#Y) (x z) v)
+		({v : z#Y} ::loda z#Y (z#X) (y z) v) ;
+::emptyset_unique : ::unique ::emptyset : ::unique_intro ::emptyset_exists ::emptyset_eq;
+
+
+
+
+
+::subset_refl : \/A. ::subset A A : \/A. \/z. {x : z#A} x ;
+::subset_trans : \/A. \/B. \/C. (::subset A B) -> (::subset B C) -> (::subset A C) : 
+	\/A. \/B. \/C. {x : ::subset A B } { y : ::subset B C } \/z. {v : z#A} (y z) ((x z) v) ;
+::subset_eq : \/A. \/B. (::subset A B) -> (::subset B A) -> (::eq A B) : 
+	\/A. \/B. { x : ::subset A B } { y : ::subset B A } \/z. ::iff_intro (x z) (y z) ;
+
+-- \/y. ::exists \x. \/z. ::iff z#x (::and z#y (B z))
+::subset_exists := \B. \/y. ::Z3 y __YEAH_DONT_USE_THIS_REFERENCE_AGAIN__ (B __YEAH_DONT_USE_THIS_REFERENCE_AGAIN__);
+
+
+::intersection := \x. \y. \S. \/a. ::iff a#S (::and a#x a#y) ;
+::intersection_l : \/A. \/B. \/S. (::intersection A B S) -> (::subset S A) : 
+	\/X. \/Y. \/S. {x : ::intersection X Y S} 
+		\/z. {v : z#S} ::and_l (::iff_lr (x z) v) ;
+::intersection_r : \/A. \/B. \/S. (::intersection A B S) -> (::subset S B) : 
+	\/X. \/Y. \/S. {x : ::intersection X Y S} 
+		\/z. {v : z#S} ::and_r (::iff_lr (x z) v) ;
+::not_in_intersection : \/X. \/Y. \/S. (::intersection X Y S) -> \/z. !z#S -> (::or !z#X !z#Y) :
+	\/X. \/Y. \/S. {x : ::intersection X Y S} 
+		\/z. {v : !z#S} ::not_and (::contrapose (::iff_rl (x z)) v) ;
+
+--TODO ::intersection_exists
+::union := \x. \y. \S. \/a. ::iff a#S (::or a#x a#y) ;
+
+::union_l : \/A. \/B. \/S. (::union A B S) -> (::subset A S) : 
+	\/L. \/R. \/S.  {p1 : ::union L R S} \/x. {p2 : x#L}
+		(::iff_rl (p1 x)) (::or_intro_l x#L x#R p2) ;
+
+::union_r : \/A. \/B. \/S. (::union A B S) -> (::subset B S) : 
+	\/L. \/R. \/S.  {p1 : ::union L R S} \/x. {p2 : x#R}
+		(::iff_rl (p1 x)) (::or_intro_r x#L x#R p2) ;
+::union_comm::l : \/A. \/B. \/S. \/Q. (::union A B S) -> (::union B A Q) -> (::subset S Q) : 
+	\/A. \/B. \/S. \/Q. {a : ::union A B S} {b : ::union B A Q} \/x. {p3 : x#S}
+		::or_cases (::iff_lr (a x) p3)
+			({v : x#A} ::iff_rl (b x) (::or_intro_r x#B x#A v))
+			({v : x#B} ::iff_rl (b x) (::or_intro_l x#B x#A v)) ;
+::union_comm : \/A. \/B. \/S. \/Q. (::union A B S) -> (::union B A Q) -> (::eq S Q) : 
+	\/A. \/B. \/S. \/Q. { a : ::union A B S} {b : ::union B A Q}
+		::subset_eq S Q
+			(::union_comm::l A B S Q a b)
+			(::union_comm::l B A Q S b a) ;
+
+--TODO ::union_exists
+
+
+
+
+::powerset := \x. \S. \/z. ::iff z#S (::subset z x) ;
+::powerset_eq::l : \/X. \/A. \/B. (::powerset X A) -> (::powerset X B) -> (::subset A B) : 
+	\/X. \/A. \/B. {a : ::powerset X A} {b : ::powerset X B} \/z. {v : z#A} ::iff_rl (b z) (::iff_lr (a z) v);
+::powerset_eq : \/X. \/A. \/B. {a : ::powerset X A} {b : ::powerset X B}
+	::subset_eq A B (::powerset_eq::l X A B a b) (::powerset_eq::l X B A b a);
+
+
+::powerset_exists : \/x. ::exists (::powerset x) : 
+	\/x. ::exists_strip
+		(::exists_mp (::Z8 x)
+		\/y. {v : \/z. (::subset z x) -> z#y}
+		::exists_mp (::subset_exists (\q. ::subset q x) y)
+		\/q. {v2 : \/z. ::iff z#q (::and z#y (::subset z x)) }
+		\/z. ::iff_trans (v2 z)
+		(::iff_intro
+			({v1 : ::and z#y (::subset z x)} ::and_r v1)
+			({v1 : ::subset z x} ::and_intro (v z v1) v1))) ;
+
+
+
+
+
+
+
+
+::unordered_pair := \x.\y. \S. \/a. ::iff a#S (::or (::eq a x) (::eq a y)) ;
+
+::unordered_pair_l : \/x. \/y. \/S. (::unordered_pair x y S) -> x#S : 
+\/x. \/y. \/S. {a : ::unordered_pair x y S} 
+	::iff_rl 
+		(a x)
+		(::or_intro_l (::eq x x) (::eq x y) (::eq_refl x))
+;
+::unordered_pair_r : \/x. \/y. \/S. (::unordered_pair x y S) -> y#S : 
+\/x. \/y. \/S. {a : ::unordered_pair x y S} 
+	::iff_rl (a y)
+		(::or_intro_r (::eq y x) (::eq y y) (::eq_refl y))
+;
+
+
+
+
+
+::unordered_pair_exists::t0 : {A : ::and x#z y#z} 
+::iff_intro
+	({p1 : ::and q#z (::or (::eq q x) (::eq q y))} ::and_r p1)
+	{v : ::or (::eq q x) (::eq q y)} 
+	::and_intro
+		((::or_cases v
+			({v : ::eq q x} ::iff_rl
+				(::ax_ext q x v z) (::and_l A))
+			({v : ::eq q y} ::iff_rl
+				(::ax_ext q y v z) (::and_r A)))
+			)
+		v
+;
+
+::unordered_pair_exists::t1 : {A : ::and x#z y#z} \/f. {v : \/q. ::iff q#f (::and q#z (::or (::eq q x) (::eq q y))) }
+	\/q. ::iff_trans 
+		(v q)
+		(::unordered_pair_exists::t0 A)
+;
+
+
+::unordered_pair_exists::t2 : \/z. (::and x#z y#z) -> (::exists (\S. ::unordered_pair x y S)): 
+\/z. {A : ::and x#z y#z} ::exists_mp 
+	(::Z3 z q (::or (::eq q x) (::eq q y)))
+	(::unordered_pair_exists::t1 A)
+;
+
+::unordered_pair_exists::t3 : ::exists \z. ::exists \S. ::unordered_pair x y S : 
+::exists_mp
+	(::ax_pairing x y)
+	::unordered_pair_exists::t2
+;
+
+
+::unordered_pair_exists : \/x. \/y. ::exists \S. ::unordered_pair x y S : 
+	\/x. \/y. ::exists_strip ::unordered_pair_exists::t3 ;
+
+
+::unordered_pair_eq::0 : \/x. \/y. \/P. \/Q. (::unordered_pair x y P) -> (::unordered_pair x y Q) -> (::subset P Q) : 
+\/x. \/y. \/P. \/Q. {p1 : ::unordered_pair x y P } { p2 : ::unordered_pair x y Q }
+	\/v.  { p3 : v#P }
+	::or_cases (::iff_lr (p1 v) p3)
+		({t : ::eq v x}  ::iff_rl (::eq_ext t Q) (::unordered_pair_l x y Q p2))
+		({t : ::eq v y}  ::iff_rl (::eq_ext t Q) (::unordered_pair_r x y Q p2))
+;
+
+::unordered_pair_eq : \/x. \/y. \/P. \/Q. {p1 : ::unordered_pair x y P} {p2 : ::unordered_pair x y Q}
+	::subset_eq P Q (::unordered_pair_eq::0 x y P Q p1 p2) (::unordered_pair_eq::0 x y Q P p2 p1)
+;
+
+--TODO fix match variable scope... replacing f g with x y breaks
+::unordered_pair_unique : \/x. \/y. ::unique (::unordered_pair x y) : 
+	\/f. \/g. ::unique_intro (::unordered_pair_exists f g) (::unordered_pair_eq f g);
+
+::unordered_pair_comm::0 : \/x. \/y. \/P. \/Q. (::unordered_pair x y P) -> (::unordered_pair y x Q) -> (::subset P Q) : 
+\/x. \/y. \/P. \/Q. {p1 : ::unordered_pair x y P } { p2 : ::unordered_pair y x Q }
+	\/v.  { p3 : v#P }
+	::or_cases (::iff_lr (p1 v) p3)
+		({t : ::eq v x}  ::iff_rl (::eq_ext t Q) (::unordered_pair_r y x Q p2))
+		({t : ::eq v y}  ::iff_rl (::eq_ext t Q) (::unordered_pair_l y x Q p2))
+;
+
+::unordered_pair_comm : \/x. \/y. \/P. \/Q. {p1 : ::unordered_pair x y P} {p2 : ::unordered_pair y x Q}
+	::subset_eq P Q 
+		(::unordered_pair_comm::0 x y P Q p1 p2)
+		(::unordered_pair_comm::0 y x Q P p2 p1) ;
+
+
+
+
+::singleton := \x. \S. \/y. ::iff y#S (::eq y x) ;
+
+::singleton_exists::0 : \/Q. (\/a. ::iff a#Q (::or (::eq a x) (::eq a x))) 
+	-> (\/a. ::iff a#Q (::eq a x))
+
+: \/Q. {A : \/a. ::iff a#Q (::or (::eq a x) (::eq a x))}
+	\/a. (::iff_trans
+		(A a)
+		(::iff_intro 
+			({ v : ::or (::eq a x) (::eq a x) }
+				::or_cases v
+					({b : ::eq a x} b)
+					({b : ::eq a x} b))
+			(::or_intro_l (::eq a x) (::eq a x))))
+;
+
+::singleton_exists : \/x. ::exists (::singleton x) : 
+	\/x. ::exists_mp 
+		(::unordered_pair_exists x x)
+		::singleton_exists::0
+;
+
+::singleton_member : \/x. \/S. (::singleton x S) -> x#S: \/x. \/S. {A : ::singleton x S} 
+	::iff_rl (A x) (::eq_refl x)
+;
+
+::not_in_self::1 : {a : x#x} {A : ::singleton x S}
+{ B : ::and y#S !(::exists \z. ::and z#y z#S)}
+	::exists_intro (\z. ::and z#y z#S) x
+	(::and_intro
+	(::iff_rl 
+	(::iff_lr (A y) (::and_l B) x) a)
+	(::singleton_member x S A))
+;
+
+
+::not_in_self::2 : {a : x#x} { A : ::singleton x S } 
+\/y. ({ B : ::and y#S !(::exists \z. ::and z#y z#S)}
+	::loda (::exists \z. ::and z#y z#S) !x#x 
+		(::and_r B)
+		(::not_in_self::1 a A B))
+
+;
+
+::not_in_self::3 : {a : x#x} \/S. {A :::singleton x S } 
+	::exists_strip
+	(::exists_mp 
+		(::ax_regularity S (::exists_intro (\x. x#S) x 
+			(::singleton_member x S A)))
+		(::not_in_self::2 a A))
+;
+
+::not_in_self : \/x. {a : x#x} 
+	::exists_strip 
+		(::exists_mp
+			(::singleton_exists x)
+			(::not_in_self::3 a))
+;
+
+::self_not_unordered_pair_l : \/x. \/y. \/S. (::unordered_pair x y S) -> (::eq x S) -> x#x   : \/x. \/y. \/S. { A : ::unordered_pair x y S }
+		({v : ::eq x S} ::iff_rl (v x) 
+			(::unordered_pair_l x y S A))
+;
+
+::self_not_unordered_pair_r : \/x. \/y. \/S. (::unordered_pair x y S) -> (::eq y S) -> y#y   : \/x. \/y. \/S. { A : ::unordered_pair x y S }
+		({v : ::eq y S} ::iff_rl (v y) 
+			(::unordered_pair_r x y S A))
+;
+
+
+
+
+::pair := \x.\y. \S. ::exists \Q. ::and (::unordered_pair x y Q) (::unordered_pair x Q S) ;
+
+
+::pair_l::0 : \/Q. {A : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)} 
+	::unordered_pair_l x Q S (::and_r A)
+;
+
+::pair_l : \/x. \/y. \/S. (::pair x y S) -> x#S : 
+\/x. \/y. \/S. {A : ::pair x y S} 
+	::exists_strip (::exists_mp A ::pair_l::0)
+;
+
+::pair_r::0 : \/Q. {A : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)}
+	::and_intro
+	(::and_l A)
+	(::unordered_pair_r x Q S
+		(::and_r A))
+;
+
+::pair_r : \/x. \/y. \/S. (::pair x y S) -> (::exists \Q. ::and (::unordered_pair x y Q) Q#S) : 
+\/x. \/y. \/S. { A : ::pair x y S }
+	::exists_mp A ::pair_r::0 
+;
+
+::pair_pos_distinction : 
+\/x. \/y. \/S. \/Q. (::and (::unordered_pair x y Q) (::unordered_pair x Q S)) -> (::eq x Q) -> x#x 
+: \/x. \/y. \/S. \/Q. { A : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)}
+	(::self_not_unordered_pair_l x y Q
+		(::and_l A))
+;
+
+::pair_exists::0 : {A : ::unordered_pair x y Q} 
+\/S. {B : ::unordered_pair x Q S}
+	::and_intro A B;
+
+::pair_exists::1 : \/Q. {A : ::unordered_pair x y Q}
+	::exists_mp 
+		(::unordered_pair_exists x Q) 
+		(::pair_exists::0 A)
+;
+
+::pair_exists :
+\/x. \/y. ::exists (::pair x y)
+: \/x. \/y. ::exists_flip (::exists_mp (::unordered_pair_exists x y) ::pair_exists::1) ;
+
+
+::pair_is_l::0 : (::and (::unordered_pair x y Q) (::unordered_pair x Q S))
+ -> \/a. a#S -> a#Q -> (::eq a x)
+: {A : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)} 
+\/a. { B : a#S } { C : a#Q }
+	(::or_cases (::iff_lr (::and_r A a) B)
+		({v : ::eq a x} v)
+		({v : ::eq a Q} 
+			::loda a#a (::eq a x)
+				(::not_in_self a (::iff_rl (v a) C))
+				(::iff_rl (v a) C)))
+;
+
+::pair_is_l::1 : \/Q. {p1 : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)} 
+	\/a. {p2 : ::or (::eq a x) (::eq a y)} { p3 : a#S }
+		::pair_is_l::0 p1 a p3 
+			(::or_cases p2
+				({v : ::eq a x} ::iff_rl (::eq_ext v Q) (::unordered_pair_l x y Q (::and_l p1)))
+				({v : ::eq a y} ::iff_rl (::eq_ext v Q) (::unordered_pair_r x y Q (::and_l p1))))
+;
+
+::pair_is_l : \/x. \/y. \/S. (::pair x y S) -> \/a. (::or (::eq a x) (::eq a y)) -> a#S -> (::eq a x) : 
+	\/x. \/y. \/S. {p1 : ::pair x y S} ::exists_strip (::exists_mp p1 ::pair_is_l::1);
+
+::pair_is_r::0 :
+(::and (::unordered_pair x y Q) (::unordered_pair x Q S)) 
+-> \/a. !a#S -> a#Q -> (::eq a y)
+: {A : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)} 
+\/a. { B : !a#S } { C : a#Q } 
+	::or_cases (::iff_lr (::and_l A a) C)
+		({v : ::eq a x}
+			::loda a#S (::eq a y) B
+			(::iff_rl (::ax_ext a x v S)
+				(::unordered_pair_l x Q S (::and_r A))))
+		({v : ::eq a y} v)
+;
+
+::pair_is_r::1 : \/Q. {p1 : ::and (::unordered_pair x y Q) (::unordered_pair x Q S)} 
+	\/a. {p2 : ::or (::eq a x) (::eq a y)} { p3 : !a#S }
+		::pair_is_r::0 p1 a p3 
+			(::or_cases p2
+				({v : ::eq a x} ::iff_rl (::eq_ext v Q) (::unordered_pair_l x y Q (::and_l p1)))
+				({v : ::eq a y} ::iff_rl (::eq_ext v Q) (::unordered_pair_r x y Q (::and_l p1))))
+;
+
+::pair_is_r : \/x. \/y. \/S. (::pair x y S) -> \/a. (::or (::eq a x) (::eq a y)) -> !a#S -> (::eq a y) : 
+	\/x. \/y. \/S. {p1 : ::pair x y S} ::exists_strip (::exists_mp p1 ::pair_is_r::1);
+
+
+::unordered_pair_elim : \/x. \/y. \/P. (::unordered_pair x y P) -> \/a. a#P -> !(::eq a x) -> (::eq a y) : 
+\/x. \/y. \/P. { p0 : ::unordered_pair x y P } \/a. { p1 : a#P } {p2 : !(::eq a x)}
+	::or_cases (::iff_lr (p0 a) p1) 
+		({p3 : ::eq a x} ::loda (::eq a x) (::eq a y) p2 p3)
+		{p3 : ::eq a y} p3
+;
+
+::car := \P. \v. ::and (::exists \k. ::and v#k k#P) (::exists \y. ::pair v y P) ;
+
+::cdr := \P. \v. ::exists \x. ::and (::pair x v P) (::or !v#P (::eq v x)) ;
+
+::pair_car : \/x. \/y. \/P. (::pair x y P) -> (::car P x) : 
+	\/x. \/y. \/P. { p1 : ::pair x y P }
+		::and_intro 
+			(::exists_mp (::pair_r x y P p1)
+				\/Q. {p2 : ::and (::unordered_pair x y Q) Q#P}
+					::and_intro
+						(::unordered_pair_l x y Q (::and_l p2))
+						(::and_r p2)) 
+			(::exists_intro (\y. ::pair x y P) y p1) ;
+
+::pair_cdr : \/x. \/y. \/P. (::pair x y P) -> (::cdr P y) : 
+	\/x. \/y. \/P. { p1 : ::pair x y P } 
+	::exists_intro (\x. ::and (::pair x y P) (::or !y#P (::eq y x))) x
+	(::and_intro
+		p1
+		(::bool_cases
+		(::exists_strip (::exists_mp p1
+		\/Q. { p3 : ::and (::unordered_pair x y Q) (::unordered_pair x Q P) }
+			{p4 : y#P}
+				::or_cases (::iff_lr (::and_r p3 y) p4)
+				(::or_intro_r !y#P (::eq y x))
+				{p5 : ::eq y Q} 
+					::loda y#y (::or !y#P (::eq y x))
+						(::not_in_self y (::self_not_unordered_pair_r x y Q (::and_l p3) p5))
+						(::self_not_unordered_pair_r x y Q (::and_l p3) p5)))
+		(::or_intro_l !y#P (::eq y x))))
+;
+
+::car_in_pair : \/P. \/x. { p1 : ::car P x } 
+	::exists_strip (::exists_mp (::and_r p1)
+			\/y. {p2 : ::pair x y P } ::pair_l x y P p2) ;
+
+
+
+::car_eq : \/P. \/a. \/b. (::car P a) -> (::car P b) -> (::eq a b) : 
+\/P. \/a. \/b. { p1 : ::car P a } { p2 : ::car P b } 
+	::exists_strip
+	(::exists_mp
+	(::and_r p1)
+	\/y. { p3 : ::pair a y P }
+		::exists_strip (::exists_mp p3
+		\/Q. { p4 : ::and (::unordered_pair a y Q) (::unordered_pair a Q P) }
+			::or_cases (::iff_lr (::and_r p4 b) (::car_in_pair P b p2))
+			({p5 : ::eq b a} ::eq_symm b a p5)
+			{p5 : ::eq b Q} 
+
+				::exists_strip
+				(::exists_mp
+					(::ax_regularity P 
+						(::exists_intro (\x. x#P) a (::car_in_pair P a p1)))
+
+				\/z. {p6 : ::and z#P !(::exists \t. ::and t#z t#P)}
+					::let (::or_cases (::iff_lr (::and_r p4 z) (::and_l p6))
+						({p7 : ::eq z a} p7)
+						{p7 : ::eq z Q}
+							::or_cases (::not_and (::ldn (::and_r p6) a))
+								({p8 : !a#z} 
+									::loda a#z (::eq z a) p8 (::iff_rl (p7 a) 
+										(::unordered_pair_l a y Q (::and_l p4))))
+								{p8 : !a#P}
+									::loda a#P (::eq z a) p8  
+										(::unordered_pair_l a Q P (::and_r p4)))
+					\lemma1.
+					::or_cases (::not_and (::ldn (::and_r p6) Q))
+						({p7 : !Q#z} 
+							::exists_strip
+							(::exists_mp
+							(::and_l p2)
+							\/k. { p8 : ::and b#k k#P }
+							::loda b#k (::eq a b)
+							(::eq_not_in Q b (::eq_symm b Q p5) k
+							(::or_cases (::iff_lr (::and_r p4 k) (::and_r p8))
+								({ p9 : ::eq k a } 
+								::not_in_eq a k (::eq_symm k a p9) Q
+									(::not_in_eq z a lemma1 Q p7))
+								{ p9 : ::eq k Q }
+								::not_in_eq Q k (::eq_symm k Q p9) Q
+									(::bool_cases ({p8 : Q#Q} ::not_in_self Q p8) 
+										{p8 : !Q#Q} p8)))
+							(::and_l p8)))
+						({p7 : !Q#P}
+							::loda Q#P (::eq a b) p7 (::unordered_pair_r a Q P (::and_r p4))))));
+
+::cdr_in_pair : \/P. \/a. (::cdr P a) -> a#P -> \/b. (::car P b) -> (::eq a b) : 
+\/P. \/a. { p1 : ::cdr P a } { p2 : a#P } 
+	\/b. {p3 : ::car P b}
+	::exists_strip (::exists_mp p1
+	\/x. {p4 : ::and (::pair x a P) (::or !a#P (::eq a x))}
+		::eq_trans a x b
+		(::and_r p4 (::cldn p2))
+		(::car_eq P x b (::pair_car x a P (::and_l p4)) p3))
+;
+
+::cdr_not_in_pair : \/P. \/a. (::cdr P a) -> !a#P -> \/b. (::car P b) -> !(::eq a b) 
+: \/P. \/a. { p1 : ::cdr P a } { p2 : !a#P } \/b. {p3 : ::car P b}
+	::exists_strip (::exists_mp p1
+	\/x. {p4 : ::and (::pair x a P) (::or !a#P (::eq a x))}
+		::bool_cases
+			({ p5 : ::eq a b } 
+				::loda a#P !(::eq a b) p2
+				 (::iff_rl (::eq_ext (::eq_trans a b x p5 (::car_eq P b x p3 (::pair_car x a P (::and_l p4)))) P)
+				(::pair_l x a P (::and_l p4))))
+			{p5 : !(::eq a b)} p5)
+;
+
+::cdr_eq : \/P. \/a. \/b. (::cdr P a) -> (::cdr P b) -> (::eq a b) : \/P. \/a. \/b. { p1 : ::cdr P a } {p2 : ::cdr P b }
+	::exists_strip (::exists_mp p1
+	\/x1. {p3 : ::and (::pair x1 a P) (::or !a#P (::eq a x1)) } 
+	::exists_strip (::exists_mp p2
+	\/x2. {p4 : ::and (::pair x2 b P) (::or !b#P (::eq b x2)) } 
+		::let (::car_eq P x1 x2 (::pair_car x1 a P (::and_l p3)) (::pair_car x2 b P (::and_l p4)))
+		\lemma1.
+		::or_cases (::and_r p3)
+		({p5 : !a#P} 
+			::exists_strip (::exists_mp (::pair_r x1 a P (::and_l p3))
+			\/Q1. {p6 : ::and (::unordered_pair x1 a Q1) Q1#P}
+			::exists_strip (::exists_mp (::and_l p4)
+			\/Q2. {p7 : ::and (::unordered_pair x2 b Q2) (::unordered_pair x2 Q2 P)}
+				::let ({p8 : ::eq Q1 x2} ::self_not_unordered_pair_l x1 a Q1 (::and_l p6) 
+					(::eq_trans x1 x2 Q1 lemma1 (::eq_symm Q1 x2 p8)))
+				\lemma2.
+				
+				::let
+					(::or_cases (::iff_lr (::and_r p7 Q1) (::and_r p6)) -- ::or (::eq Q1 x2) (::eq Q1 Q2)
+					({p8 : ::eq Q1 x2} 
+						::loda x1#x1 (::eq Q1 Q2) (::not_in_self x1 (lemma2 p8)) (lemma2 p8))
+					({p8 : ::eq Q1 Q2} p8))
+				\lemma3. 
+
+				::let (::cdr_not_in_pair P a p1 p5 x2 (::pair_car x2 b P (::and_l p4))) -- a != x2
+				\lemma4.
+
+				::or_cases
+				(::iff_lr (::and_l p7 a) (::iff_lr (lemma3 a) (::unordered_pair_r x1 a Q1 (::and_l p6))))
+					({p8 : ::eq a x2} ::loda (::eq a x2) (::eq a b) lemma4 p8)
+					{p8 : ::eq a b} p8)))
+
+		{p11 : ::eq a x1} 
+		::or_cases (::and_r p4)
+		({p5 : !b#P} 
+			::exists_strip (::exists_mp (::pair_r x2 b P (::and_l p4))
+			\/Q2. {p6 : ::and (::unordered_pair x2 b Q2) Q2#P}
+			::exists_strip (::exists_mp (::and_l p3)
+			\/Q1. {p7 : ::and (::unordered_pair x1 a Q1) (::unordered_pair x1 Q1 P)}
+				::let ({p8 : ::eq Q2 x1} ::self_not_unordered_pair_l x2 b Q2 (::and_l p6) 
+					(::eq_trans x2 x1 Q2 (::eq_symm x1 x2 lemma1) (::eq_symm Q2 x1 p8)))
+				\lemma2.
+				
+				::let
+					(::or_cases (::iff_lr (::and_r p7 Q2) (::and_r p6)) -- ::or (::eq Q2 x1) (::eq Q2 Q1)
+					({p8 : ::eq Q2 x1} 
+						::loda x2#x2 (::eq Q2 Q1) (::not_in_self x2 (lemma2 p8)) (lemma2 p8))
+					({p8 : ::eq Q2 Q1} p8))
+				\lemma3. 
+
+				::let (::cdr_not_in_pair P b p2 p5 x1 (::pair_car x1 a P (::and_l p3))) -- a != x2
+				\lemma4.
+
+				::or_cases
+				(::iff_lr (::and_l p7 b) (::iff_lr (lemma3 b) (::unordered_pair_r x2 b Q2 (::and_l p6))))
+					({p8 : ::eq b x1} ::loda (::eq b x1) (::eq a b) lemma4 p8)
+					{p8 : ::eq b a} (::eq_symm b a p8)))) 
+		{p12 : ::eq b x2}
+			::eq_trans a x1 b (p11) (::eq_trans x1 x2 b lemma1 (::eq_symm b x2 p12))))
+;
+				
+
+
+
+::pair_eq : \/x. \/y. \/P. \/Q. (::pair x y P) -> (::pair x y Q) -> (::eq P Q) : 
+\/x. \/y. \/P. \/Q. {p1 : ::pair x y P} {p2 : ::pair x y Q} 
+	::exists_strip (::exists_mp p1
+	\/Q1. {p3 : ::and (::unordered_pair x y Q1) (::unordered_pair x Q1 P)}
+	::exists_strip (::exists_mp p2
+	\/Q2. {p4 : ::and (::unordered_pair x y Q2) (::unordered_pair x Q2 Q)}
+	::let (::unordered_pair_eq x y Q1 Q2 (::and_l p3) (::and_l p4)) -- ::eq Q1 Q2
+	\lemma1.
+	::let (\/k. ::iff_trans (::and_r p3 k)
+		(::iff_intro 
+		({p6 : ::or (::eq k x) (::eq k Q1)}
+			::or_cases p6
+				(::or_intro_l (::eq k x) (::eq k Q2))
+				({p7 : ::eq k Q1} ::or_intro_r (::eq k x) (::eq k Q2) (::eq_trans k Q1 Q2 p7 lemma1)))
+		({p6 : ::or (::eq k x) (::eq k Q2)}
+			::or_cases p6
+				(::or_intro_l (::eq k x) (::eq k Q1))
+				({p7 : ::eq k Q2} ::or_intro_r (::eq k x) (::eq k Q1) (::eq_trans k Q2 Q1 p7 
+					(::eq_symm Q1 Q2 lemma1))))))
+	\lemma2.
+	::unordered_pair_eq x Q2 P Q lemma2 (::and_r p4)))
+;
+
+::pair_unique : \/x. \/y. ::unique (::pair x y): \/f. \/g. ::unique_intro (::pair_exists f g) (::pair_eq f g) ;
+
+
+
+
+
+
+
+
+::cartesian_product := \A. \B. \S. \/Q. ::iff Q#S (::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y Q)) ;
+
+::cartesian_product_exists::0 : \/A. \/B. 
+	::exists_mp (::ax_pairing A B)
+	\/z. {p1 : ::and A#z B#z }
+	::exists_mp (::ax_union z)
+	\/a. {p2 : \/y.\/x.(::and x#y y#z) -> x#a}
+	::exists_mp (::ax_powerset a)
+	\/P1. {p3 : \/z. (::subset z a) -> z#P1}
+	::exists_mp (::ax_pairing A P1)
+	\/z2. {p4 : ::and A#z2 P1#z2 }
+	::exists_mp (::ax_union z2)
+	\/a2. {p5 : \/y.\/x.(::and x#y y#z2) -> x#a2}
+	::exists_mp (::ax_powerset a2)
+	\/P2. {p6 : \/z. (::subset z a2) -> z#P2}
+	::let
+	(\/x. \/y. {p7 : x#A} {p8 : y#B}
+		::let (p2 A x (::and_intro p7 (::and_l p1))) --x#a
+		\lemma1.
+		::let (p2 B y (::and_intro p8 (::and_r p1))) --y#a
+		\lemma2.
+		::exists_strip (::exists_mp (::unordered_pair_exists x y)
+		\/Q. { p9 : \/k. ::iff k#Q (::or (::eq k x) (::eq k y)) }
+		::let
+		(p3 Q (\/f. { p10 : f#Q } ::or_cases (::iff_lr (p9 f) p10)
+		({p11 : ::eq f x} ::iff_rl (::eq_ext p11 a) lemma1)
+		({p11 : ::eq f y} ::iff_rl (::eq_ext p11 a) lemma2))) -- Q#P1
+		\lemma3.
+		::let (p5 A x (::and_intro p7 (::and_l p4))) --x#a2
+		\lemma4.
+		::let (p5 P1 Q (::and_intro lemma3 (::and_r p4))) -- Q#a2
+		\lemma5.
+		::exists_mp (::unordered_pair_exists x Q)
+		\/P. { p10 : \/k. ::iff k#P (::or (::eq k x) (::eq k Q)) }
+		::let (p6 P (\/f. { p11 : f#P } ::or_cases (::iff_lr (p10 f) p11)
+		({p12 : ::eq f x} ::iff_rl (::eq_ext p12 a2) lemma4)
+		({p12 : ::eq f Q} ::iff_rl (::eq_ext p12 a2) lemma5)))
+		\lemma6. -- P#P2
+		::let (::exists_intro (\Q. ::and (::unordered_pair x y Q) (::unordered_pair x Q P)) Q
+				(::and_intro p9 p10))
+		\lemma7.
+		::and_intro lemma7 lemma6
+		))
+	\lemma0. -- \/x. \/y. x#A -> y#B -> ::exists \P. ::and (::pair x y P) P#P2
+	::exists_intro (\S. \/x. \/y. x#A -> y#B -> (::exists \P. ::and (::pair x y P) P#S)) P2 lemma0
+;
+
+::cartesian_product_exists::1 : \/A. \/B. ::exists \S. \/x. \/y. x#A -> y#B -> (::exists \P. ::and (::pair x y P) P#S)
+: \/A. \/B. ::exists_strip (::exists_strip (::exists_strip 
+	(::exists_strip (::exists_strip (::exists_strip (::cartesian_product_exists::0 A B)))))) ;
+
+::cartesian_product_exists::2 : 
+\/S. ::exists \v. \/z. ::iff z#v (::and z#S (::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y z)))
+: ::subset_exists (\v. ::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y v)) ;
+
+::cartesian_product_exists : \/A. \/B. ::exists (::cartesian_product A B) :
+	\/A. \/B. (::exists_strip (::exists_mp (::cartesian_product_exists::1 A B)
+	\/S. {p1 : \/x. \/y. x#A -> y#B -> (::exists \P. ::and (::pair x y P) P#S)}
+		::exists_mp (::cartesian_product_exists::2 S)
+		\/C. {p2 : \/z. ::iff z#C (::and z#S (::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y z)))}
+			\/z.
+			::iff_trans 
+			(p2 z)
+			(::iff_intro
+			({p3 : ::and z#S (::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y z))} ::and_r p3)
+			{p3 : ::exists \x. ::exists \y. ::and (::and x#A y#B) (::pair x y z) }
+				  ::exists_strip(::exists_strip(::exists_strip(::exists_mp p3
+				\/X. {p4 : ::exists \y. ::and (::and X#A y#B) (::pair X y z) }
+				::exists_mp p4
+				\/Y. {p5 : ::and (::and X#A Y#B) (::pair X Y z)}
+				::exists_mp (p1 X Y (::and_l (::and_l p5)) (::and_r (::and_l p5)))
+				\/Z. {p6 : ::and (::pair X Y Z) Z#S}
+					::and_intro
+					(::iff_lr (::eq_ext (::pair_eq X Y Z z (::and_l p6) (::and_r p5)) S) (::and_r p6))
+					p3
+				))))))
+;
+
+
+::cartesian_product_subset :
+\/A. \/B. \/P. \/Q. (::cartesian_product A B P) -> (::cartesian_product A B Q) -> (::subset P Q)
+: \/A. \/B. \/P. \/Q. { p1 : ::cartesian_product A B P } { p2 : ::cartesian_product A B Q } 
+	\/z. { p3 : z#P } ::iff_rl (p2 z) (::iff_lr (p1 z) p3) ;
+
+::cartesian_product_eq : \/A. \/B. \/P. \/Q. { p1 : ::cartesian_product A B P } { p2 : ::cartesian_product A B Q } 
+	(::subset_eq P Q (::cartesian_product_subset A B P Q p1 p2) (::cartesian_product_subset A B Q P p2 p1)) 
+;
+
+::cartesian_product_unique : \/A. \/B. ::unique (::cartesian_product A B)
+: \/A. \/B. ::unique_intro (::cartesian_product_exists A B) (::cartesian_product_eq A B) ;
+
+::pair_in_product : \/x. \/y. \/A. \/B. \/S.{ p3 : ::cartesian_product A B S } { p1 : x#A } { p2 : y#B } 
+	\/P. {p4 : ::pair x y P}
+	::iff_rl (p3 P)
+	(::exists_intro (\x. ::exists \y. ::and (::and x#A y#B) (::pair x y P)) x
+	(::exists_intro (\y. ::and (::and x#A y#B) (::pair x y P)) y (::and_intro (::and_intro p1 p2) p4)))
+;
+
+::Map := \A. \B. \S. ::and 
+	(::exists \Q. ::and (::cartesian_product A B Q) (::subset S Q))
+	\/x. x#A -> (::unique \y. ::exists \P. ::and (::pair x y P) P#S)
+;
+
+::Apply := \S. \x. \v. ::and (::exists \A. ::exists \B. ::Map A B S) (::exists \Q. ::and (::pair x v Q) Q#S) ;
+
+
+::id_map := \A. \S. \/z. ::iff z#S (::exists \x. ::and x#A (::pair x x z)) ;
+
+::id_map_subset_product : \/A. \/Q. \/S. (::cartesian_product A A Q) -> (::id_map A S) -> (::subset S Q): 
+\/A. \/Q. \/S. {p0 : ::cartesian_product A A Q} { p1 : ::id_map A S } 
+	\/z. {p2 : z#S} 
+	::exists_strip (::exists_mp (::iff_lr (p1 z) p2)
+	\/V. {p3 : ::and V#A (::pair V V z)}
+	::pair_in_product V V A A Q p0 (::and_l p3) (::and_l p3) z (::and_r p3))
+;
+	
+
+::id_map_exists : \/A. ::exists (::id_map A) : \/A.
+	::exists_strip (::exists_mp (::cartesian_product_exists A A)
+	\/Q. { p1 : ::cartesian_product A A Q }
+	::exists_mp (::subset_exists (\z. ::exists \x. ::and x#A (::pair x x z)) Q)
+	\/S. { p2 : \/z. ::iff z#S (::and z#Q (::exists \x. ::and x#A (::pair x x z)))}
+	\/z. ::iff_trans (p2 z)
+	(::iff_intro
+	({ p3 : ::and z#Q (::exists \x. ::and x#A (::pair x x z))} (::and_r p3))
+	{ p3 : ::exists \x. ::and x#A (::pair x x z)}
+		::and_intro (::exists_strip (::exists_mp p3
+		\/x. { p4 : ::and x#A (::pair x x z) }
+		::pair_in_product x x A A Q p1 (::and_l p4) (::and_l p4) z (::and_r p4)))
+		p3))
+;
+
+
+
+::id_is_map::0 : { p1 : ::id_map A S } \/x. { p2 : x#A } 
+	(\/y1. \/y2. 
+	{p3 : ::exists \P. ::and (::pair x y1 P) P#S }
+	{p4 : ::exists \P. ::and (::pair x y2 P) P#S }
+	::exists_strip(::exists_strip(::exists_strip(::exists_strip(::exists_mp p3
+	\/P1. {p5 : ::and (::pair x y1 P1) P1#S }
+	::exists_mp p4
+	\/P2. {p6 : ::and (::pair x y2 P2) P2#S }
+	::exists_mp (::iff_lr (p1 P1) (::and_r p5))
+	\/x1. { p7 : ::and x1#A (::pair x1 x1 P1) }
+	::exists_mp (::iff_lr (p1 P2) (::and_r p6))
+	\/x2. { p8 : ::and x2#A (::pair x2 x2 P2) }
+	::eq_trans y1 x y2
+	(::eq_trans y1 x1 x
+	(::cdr_eq P1 y1 x1 (::pair_cdr x y1 P1 (::and_l p5)) (::pair_cdr x1 x1 P1 (::and_r p7)))
+	(::car_eq P1 x1 x (::pair_car x1 x1 P1 (::and_r p7)) (::pair_car x y1 P1 (::and_l p5))))
+	(::eq_trans x x2 y2
+	(::car_eq P2 x x2 (::pair_car x y2 P2 (::and_l p6)) (::pair_car x2 x2 P2 (::and_r p8)))
+	(::cdr_eq P2 x2 y2 (::pair_cdr x2 x2 P2 (::and_r p8)) (::pair_cdr x y2 P2 (::and_l p6)))))))))
+;
+
+::id_is_map::1 : (::id_map A S) -> \/x. x#A -> (::unique \y. ::exists \P. ::and (::pair x y P) P#S)  : { p1 : ::id_map A S }  \/f. {p2 : f#A}
+	::unique_intro
+	(::exists_intro (\y. ::exists \P. ::and (::pair f y P) P#S) f
+	(::exists_mp (::pair_exists f f)
+	\/p. {p3 : ::pair f f p}
+		::and_intro p3
+		(::iff_rl (p1 p) (::exists_intro (\f. ::and f#A (::pair f f p)) f (::and_intro p2 p3)))))
+	(::id_is_map::0 p1 f p2) 
+;
+
+::id_is_map : \/A. \/S. (::id_map A S) -> (::Map A A S) : \/A. \/S. { p1 : ::id_map A S } 
+	::and_intro
+	(::exists_mp (::cartesian_product_exists A A)
+	\/Q. {p2 : ::cartesian_product A A Q } 
+		::and_intro p2 (::id_map_subset_product A Q S p2 p1))
+	(::id_is_map::1 p1)
+;
+
+::map_apply : \/A. \/B. \/f. (::Map A B f) -> \/x. x#A -> (::exists \y. ::Apply f x y) : \/A. \/B. \/f. { p1 : ::Map A B f }  \/x. {p2 : x#A}
+	::exists_mp (::unique_exists (\y. ::exists \P. ::and (::pair x y P) P#f) ((::and_r p1) x p2))
+	\/y. { p3 : ::exists \P. ::and (::pair x y P) P#f}
+		::and_intro (::exists_intro (\A. ::exists \B. ::Map A B f) A (::exists_intro (\B. ::Map A B f) B p1))
+			p3
+;
+
+::apply_type : \/A. \/B. \/f. {p1 : ::Map A B f} \/x. \/y. {p2 : ::Apply f x y}
+	::exists_strip(::exists_strip(::exists_strip(::exists_strip(::exists_mp (::and_r p2)
+	\/Q. {p3 : ::and (::pair x y Q) Q#f}
+	::exists_mp (::and_l p1)
+	\/S. {p4 : ::and (::cartesian_product A B S) (::subset f S)}
+	::exists_mp (::iff_lr (::and_l p4 Q) ((::and_r p4) Q (::and_r p3)))
+	\/X. {p5 : ::exists \y. ::and (::and X#A y#B) (::pair X y Q)}
+	::exists_mp p5
+	\/Y. {p6 : ::and (::and X#A Y#B) (::pair X Y Q)}
+	::iff_rl (::eq_ext (::cdr_eq Q y Y 
+	(::pair_cdr x y Q (::and_l p3))
+	(::pair_cdr X Y Q (::and_r p6))) B) (::and_r (::and_l p6))))))
+;
+
+::apply_arg_type : \/A. \/B. \/f. {p1 : ::Map A B f} \/x. \/y. {p2 : ::Apply f x y}
+	::exists_strip(::exists_strip(::exists_strip(::exists_strip(::exists_mp (::and_r p2)
+	\/Q. {p3 : ::and (::pair x y Q) Q#f}
+	::exists_mp (::and_l p1)
+	\/S. {p4 : ::and (::cartesian_product A B S) (::subset f S)}
+	::exists_mp (::iff_lr (::and_l p4 Q) ((::and_r p4) Q (::and_r p3)))
+	\/X. {p5 : ::exists \y. ::and (::and X#A y#B) (::pair X y Q)}
+	::exists_mp p5
+	\/Y. {p6 : ::and (::and X#A Y#B) (::pair X Y Q)}
+	::iff_rl (::eq_ext (::car_eq Q x X
+	(::pair_car x y Q (::and_l p3))
+	(::pair_car X Y Q (::and_r p6))) A) (::and_l (::and_l p6))))))
+;
+
+::compose := \f. \g. \h. \/P. ::iff 
+	P#h
+	(::exists \x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P))
+;
+
+::compose_subset_product : 
+\/X. \/Y. \/Z. \/f. \/g. \/h. \/S. (::Map Y Z f) -> (::Map X Y g) -> (::compose f g h) -> (::cartesian_product X Z S)
+-> (::subset h S)
+: 
+\/X. \/Y. \/Z. \/f. \/g. \/h. \/S.
+{ p0a : ::Map Y Z f } { p0b : ::Map X Y g } { p1 : ::compose f g h } 
+{ p1b : ::cartesian_product X Z S } \/P. { p2 : P#h } 
+	::exists_strip ( ::exists_strip( ::exists_strip(::exists_mp (::iff_lr (p1 P) p2)
+	\/x. { p3 : ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+	::exists_mp p3
+	\/y. { p4 : ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+	::exists_mp p4	
+	\/z. { p5 : ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+	::pair_in_product x z X Z S p1b
+	(::apply_arg_type X Y g p0b x y (::and_r (::and_l p5)))
+	(::apply_type Y Z f p0a y z (::and_l (::and_l p5)))
+	P
+	(::and_r p5))))
+;
+
+
+::compose_exists :
+	\/X. \/Y. \/Z. \/f. \/g. (::Map Y Z f) -> (::Map X Y g) -> (::exists (::compose f g))
+: \/X. \/Y. \/Z. \/f. \/g. { p0 : ::Map Y Z f } { p1 : ::Map X Y g } 
+	::exists_strip
+	(::exists_mp (::cartesian_product_exists X Z)
+	\/S. { p3 : ::cartesian_product X Z S }
+	::exists_mp (::subset_exists (\P. ::exists \x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P)) S)
+	\/Q. {p4 : \/P. ::iff P#Q (::and P#S 
+		(::exists \x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P))) }
+	\/P. ::iff_trans (p4 P)
+	(::iff_intro
+	({ p5 : ::and P#S (::exists \x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P)) }
+		::and_r p5)
+	{ p5 : ::exists \x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+		::exists_strip(::exists_strip(::exists_strip(::exists_mp p5
+		\/x. {p6 : ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+		::exists_mp p6
+		\/y. {p7 : ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+		::exists_mp p7
+		\/z. {p8 : ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) }
+		::and_intro (::pair_in_product x z X Z S p3
+		(::apply_arg_type X Y g p1 x y (::and_r (::and_l p8)))
+		(::apply_type Y Z f p0 y z (::and_l (::and_l p8)))
+		P
+		(::and_r p8)) p5)))))
+;
+
+
+::apply_eq : \/f. \/a. \/b. \/b2. (::Apply f a b) -> (::Apply f a b2) -> (::eq b b2) : \/f. \/a. \/b. \/b2. { p0 : ::Apply f a b } { p0b : ::Apply f a b2 } 
+	::unpack_exists (::and_l p0)
+	\A.\p1. ::unpack_exists p1
+	\B.\p2. ::unique_eq (::and_r p2 a (::apply_arg_type A B f p2 a b p0)) b b2 (::and_r p0) (::and_r p0b)
+; 
+
+::eq_unordered_pair_l :
+\/Q. \/y. \/x1. \/x2. (::eq x1 x2) -> (::unordered_pair x1 y Q) -> (::unordered_pair x2 y Q)
+: \/Q. \/y. \/x1. \/x2. {p1 : ::eq x1 x2} {p2 : ::unordered_pair x1 y Q} 
+	\/a.
+	::iff_trans (p2 a) 
+	(::iff_intro
+	({ p3 : ::or (::eq a x1) (::eq a y) } 
+		::or_cases p3
+		({ p4 : ::eq a x1 } ::or_intro_l (::eq a x2) (::eq a y) (::eq_trans a x1 x2 p4 p1) )
+		{ p4 : ::eq a y } ::or_intro_r (::eq a x2) (::eq a y) p4)
+	{ p3 : ::or (::eq a x2) (::eq a y) } 
+		::or_cases p3
+		({ p4 : ::eq a x2 } ::or_intro_l (::eq a x1) (::eq a y) (::eq_trans a x2 x1 p4 (::eq_symm x1 x2 p1)) )
+		{ p4 : ::eq a y } ::or_intro_r (::eq a x1) (::eq a y) p4)
+
+;
+
+::eq_pair_l :
+\/P. \/y. \/x1. \/x2. (::eq x1 x2) -> (::pair x1 y P) -> (::pair x2 y P)
+: \/P. \/y. \/x1. \/x2. {p1 : ::eq x1 x2} {p2 : ::pair x1 y P } 
+	::exists_mp p2 (::_unpack_exists p2
+	\Q.\p3. ::and_intro 
+		(::eq_unordered_pair_l Q y x1 x2 p1 (::and_l p3))
+		(::eq_unordered_pair_l P Q x1 x2 p1 (::and_r p3)))
+;
+
+::eq_apply :
+\/f. \/y. \/x1. \/x2. (::eq x1 x2) -> (::Apply f x1 y) -> (::Apply f x2 y)
+: \/f. \/y. \/x1. \/x2. {p1 : ::eq x1 x2} {p2 : ::Apply f x1 y}
+	::and_intro
+	(::and_l p2)
+	(::exists_mp (::and_r p2) (::_unpack_exists (::and_r p2) \Q.\p3. 
+		::and_intro 
+			(::eq_pair_l Q y x1 x2 p1 (::and_l p3))
+			(::and_r p3)))
+;
+
+::compose_is_map::0 : { p2 : ::compose f g h } \/x. \/z1. \/z2. 
+	{p4 : ::exists \P. ::and (::pair x z1 P) P#h }
+	{p5 : ::exists \P. ::and (::pair x z2 P) P#h }
+	::exists_strip(::exists_strip(::exists_mp p4
+	\/P1. { p6 : ::and (::pair x z1 P1) P1#h }
+	::exists_mp p5
+	\/P2. { p7 : ::and (::pair x z2 P2) P2#h }
+	::unpack_exists (::iff_lr (p2 P1) (::and_r p6))
+	\xa.\p8. ::unpack_exists p8 
+	\ya.\p9. ::unpack_exists p9 
+	\za.\p10.
+	::unpack_exists (::iff_lr (p2 P2) (::and_r p7))
+	\xb.\p11. ::unpack_exists p11 
+	\yb.\p12. ::unpack_exists p12 
+	\zb.\p13.
+		::let (::car_eq P1 x xa 
+			(::pair_car x z1 P1 (::and_l p6))
+			(::pair_car xa za P1 (::and_r p10))) \lemma2. -- ::eq x xa
+
+		::let (::car_eq P2 x xb
+			(::pair_car x z2 P2 (::and_l p7))
+			(::pair_car xb zb P2 (::and_r p13))) \lemma3. -- ::eq x xb
+
+		
+		::let (::apply_eq g x ya yb
+		(::eq_apply g ya xa x (::eq_symm x xa lemma2) (::and_r (::and_l p10)))
+		(::eq_apply g yb xb x (::eq_symm x xb lemma3) (::and_r (::and_l p13)))) \lemma4. --::eq ya yb
+
+		::let (::apply_eq f yb za zb
+		(::eq_apply f za ya yb lemma4 (::and_l (::and_l p10)))
+		(::and_l (::and_l p13))) \lemma5. -- ::eq za zb
+
+		::let (::cdr_eq P1 z1 za
+			(::pair_cdr x z1 P1 (::and_l p6))
+			(::pair_cdr xa za P1 (::and_r p10))) \lemma6. -- ::eq z1 za
+		
+		::let (::cdr_eq P2 zb z2
+		(::pair_cdr xb zb P2 (::and_r p13))
+		(::pair_cdr x z2 P2 (::and_l p7))) \lemma7. -- ::eq zb z2
+		::eq_trans z1 zb z2 (::eq_trans z1 za zb lemma6 lemma5) lemma7
+))
+;
+
+::compose_is_map::1 : {pa : ::Map Y Z f} {pb : ::Map X Y g} { p0 : ::compose f g h } \/x. { p1 : x#X }
+	::unpack_exists (::map_apply X Y g pb x p1)
+	\y.\p2.
+	::let (::apply_type X Y g pb x y p2) \lemma1. -- y#Y
+	::unique_intro (::exists_mp (::map_apply Y Z f pa y lemma1)
+	\/z.{p3 : ::Apply f y z}
+	::exists_mp (::pair_exists x z)
+	\/P. {p4 : ::pair x z P}
+		::let (::iff_rl (p0 P)
+		(::exists_intro (\x. ::exists \y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P) ) x
+		(::exists_intro (\y. ::exists \z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P)) y
+		(::exists_intro (\z. ::and (::and (::Apply f y z) (::Apply g x y)) (::pair x z P)) z 
+			(::and_intro (::and_intro p3 p2) p4))))) \lemma2. -- P#h
+		::and_intro p4 lemma2)
+		(::compose_is_map::0 p0 x)
+;
+
+
+::compose_is_map :
+\/X. \/Y. \/Z. \/f. \/g. (::Map Y Z f) -> (::Map X Y g) -> \/h. (::compose f g h) -> (::Map X Z h)
+: \/X. \/Y. \/Z. \/f. \/g. {pa : ::Map Y Z f} {pb : ::Map X Y g} \/h. { p0 : ::compose f g h }
+	::and_intro
+	(::exists_mp (::cartesian_product_exists X Z)
+	\/S. {p1 : ::cartesian_product X Z S} 
+		::and_intro p1 (::compose_subset_product X Y Z f g h S pa pb p0 p1))
+	(::compose_is_map::1 pa pb p0)
+;
+
+
+::constant_map := \A.\y.\S. \/P. ::iff P#S (::exists \x. ::and (::pair x y P) x#A) ;
+
+
+
+::gmul := \op. \a. \b. \c. ::exists \P. ::and (::pair a b P) (::Apply op P c) ;
+
+::group_identity := \G. \op. \I.
+	::and I#G \/x. x#G -> (::and (::gmul op x I x) (::gmul op I x x))
+;
+
+::group_inverse := \G. \op. \x. \xi.
+	::exists \I. ::and (::group_identity G op I) (::and (::and x#G xi#G) (::and (::gmul op x xi I) (::gmul op xi x I))) ;
+
+::group := \G. \op.
+	::and (::exists \S. ::and (::cartesian_product G G S) (::Map S G op))
+	(::and (::exists (::group_identity G op)) 
+	(::and 
+		(\/x. x#G -> (::exists (::group_inverse G op x)))
+		\/x. x#G -> \/y. y#G -> \/z. z#G -> 
+		(::exists \v. ::and 
+			(::exists \q. ::and (::gmul op x y q) (::gmul op q z v))
+			(::exists \q. ::and (::gmul op y z q) (::gmul op x q v)))))
+;
+
+
+::group_identity_eq :
+	\/G. \/op. \/i1. \/i2. (::group_identity G op i1) -> (::group_identity G op i2) -> (::eq i1 i2)
+: \/G. \/op. \/i1. \/i2. { p1 : ::group_identity G op i1 } { p2 : ::group_identity G op i2} 
+	::unpack_exists (::and_l (::and_r p2 i1 (::and_l p1)))
+	\P1.\p3. -- ::gmul op i1 i2 i1
+	::unpack_exists (::and_r (::and_r p1 i2 (::and_l p2))) 
+	\P2.\p4. -- ::gmul op i1 i2 i2
+
+	::let (::pair_eq i1 i2 P1 P2 (::and_l p3) (::and_l p4)) \lemma1. -- ::eq P1 P2
+	::let (::eq_apply op i1 P1 P2 lemma1 (::and_r p3)) \lemma2. -- ::Apply op P2 i1
+
+	::apply_eq op P2 i1 i2 lemma2 (::and_r p4)
+;
+
+::group_identity_unique : 
+\/G. \/op. (::group G op) -> (::unique (::group_identity G op))
+: \/G. \/op. { p1 : ::group G op } ::unique_intro (::and_l (::and_r p1)) (::group_identity_eq G op);
+
+
+::gmul_eq :
+\/op. \/a. \/b. \/c1. \/c2. (::gmul op a b c1) -> (::gmul op a b c2) -> (::eq c1 c2)
+: \/op. \/a. \/b. \/c1. \/c2. { p1 : ::gmul op a b c1 } { p2 : ::gmul op a b c2 }
+	::unpack_exists p1
+	\P1.\p3.
+	::unpack_exists p2
+	\P2.\p4.
+	::let (::pair_eq a b P1 P2 (::and_l p3) (::and_l p4)) \lemma1. -- ::eq P1 P2
+	::let (::eq_apply op c1 P1 P2 lemma1 (::and_r p3)) \lemma2. -- ::Apply P2 c1
+	::apply_eq op P2 c1 c2 lemma2 (::and_r p4) ;
+
+
+::eq_unordered_pair_r :
+\/Q. \/x. \/y1. \/y2. (::eq y1 y2) -> (::unordered_pair x y1 Q) -> (::unordered_pair x y2 Q)
+: \/Q. \/x. \/y1. \/y2. {p1 : ::eq y1 y2} {p2 : ::unordered_pair x y1 Q} 
+	\/a.
+	::iff_trans (p2 a) 
+	(::iff_intro
+	({ p3 : ::or (::eq a x) (::eq a y1) } 
+		::or_cases p3
+		({ p4 : ::eq a x } ::or_intro_l (::eq a x) (::eq a y2) p4)
+		({ p4 : ::eq a y1 } ::or_intro_r (::eq a x) (::eq a y2) (::eq_trans a y1 y2 p4 p1) ))
+	{ p3 : ::or (::eq a x) (::eq a y2) } 
+		::or_cases p3
+		({ p4 : ::eq a x } ::or_intro_l (::eq a x) (::eq a y1) p4)
+		{ p4 : ::eq a y2 } ::or_intro_r (::eq a x) (::eq a y1) (::eq_trans a y2 y1 p4 (::eq_symm y1 y2 p1)))
+;
+
+::eq_pair_r :
+\/P. \/x. \/y1. \/y2. (::eq y1 y2) -> (::pair x y1 P) -> (::pair x y2 P)
+: \/P. \/x. \/y1. \/y2. {p1 : ::eq y1 y2} {p2 : ::pair x y1 P } 
+	::exists_mp p2 
+	(::_unpack_exists p2
+	\Q.\p3. ::and_intro
+		(::eq_unordered_pair_r Q x y1 y2 p1 (::and_l p3))
+		(::and_r p3))
+;
+
+
+
+::eq_gmul_l : \/op. \/b. \/c. \/a1. \/a2. (::eq a1 a2) -> (::gmul op a1 b c) -> (::gmul op a2 b c)
+: \/op. \/b. \/c. \/a1. \/a2. { p1 : ::eq a1 a2 } { p2 : ::gmul op a1 b c }
+	::exists_mp p2 (::_unpack_exists p2
+	\P1.\p3.  ::and_intro (::eq_pair_l P1 b a1 a2 p1 (::and_l p3)) (::and_r p3))
+;
+
+::eq_gmul_r : \/op. \/a. \/c. \/b1. \/b2. (::eq b1 b2) -> (::gmul op a b1 c) -> (::gmul op a b2 c)
+: \/op. \/a. \/c. \/b1. \/b2. { p1 : ::eq b1 b2 } { p2 : ::gmul op a b1 c }
+	::exists_mp p2 (::_unpack_exists p2
+	\P1.\p3.  ::and_intro (::eq_pair_r P1 a b1 b2 p1 (::and_l p3)) (::and_r p3))
+;
+
+::group_inverse_eq : 
+\/G. \/op. (::group G op) -> \/x. x#G -> \/x1. \/x2. (::group_inverse G op x x1) -> (::group_inverse G op x x2) -> (::eq x1 x2)
+: \/G. \/op. { p1 : ::group G op } \/x. { p2 : x#G } \/x1. \/x2. 
+{ p3 : ::group_inverse G op x x1 } { p4 : ::group_inverse G op x x2} 
+	::unpack_exists p3
+	\i1.\p5.
+	::unpack_exists p4
+	\i2.\p6.
+	::let (::group_identity_eq G op i1 i2 (::and_l p5) (::and_l p6)) \lemma1. -- ::eq i1 i2
+
+	::unpack_exists ((::and_r (::and_r (::and_r p1))) x1 (::and_r (::and_l (::and_r p5))) x p2 x2 (::and_r (::and_l (::and_r p6))))
+	\V.\p7.  -- assoc G op x1 x x2
+	::unpack_exists (::and_l p7)		
+	\v1.\p8. -- ::and (::gmul op x1 x v1) (::gmul op v1 x2 V)
+	::unpack_exists (::and_r p7)		
+	\v2.\p9. -- ::and (::gmul op x x2 v2) (::gmul op x1 v2 V)
+
+	::let (::gmul_eq op x1 x v1 i1 (::and_l p8) (::and_r (::and_r (::and_r p5)))) \lemma2. --::eq v1 i1
+	::let (::eq_gmul_l op x2 V v1 i2 (::eq_trans v1 i1 i2 lemma2 lemma1) (::and_r p8)) \lemma3. -- ::gmul op i2 x2 V
+	::let (::gmul_eq op i2 x2 V x2 lemma3 (::and_r (::and_r (::and_l p6) x2 (::and_r (::and_l (::and_r p6)))))) \lemma4. -- ::eq V x2
+
+	::let (::gmul_eq op x x2 v2 i2 (::and_l p9) (::and_l (::and_r (::and_r p6)))) \lemma5. --::eq v2 i2
+	::let (::eq_gmul_r op x1 V v2 i1 (::eq_trans v2 i2 i1 lemma5 (::eq_symm i1 i2 lemma1)) (::and_r p9)) \lemma6. -- ::gmul op x1 i1 V
+	::let (::gmul_eq op x1 i1 x1 V (::and_l (::and_r (::and_l p5) x1 (::and_r(::and_l(::and_r p5))))) lemma6) \lemma7.
+
+	::eq_trans x1 V x2 lemma7 lemma4
+;
+
+::group_inverse_unique : \/G. \/op. (::group G op) -> \/x. x#G -> (::unique (::group_inverse G op x))
+: \/G. \/op. { p1 : ::group G op } \/q. { p2 : q#G } 
+	::unique_intro (::and_l(::and_r(::and_r p1)) q p2) (::group_inverse_eq G op p1 q p2) ;
+
+::subgruop := \G.\o1.\K.\o2.  ::and (::and (::subset K G) (::subset o2 o1)) (::and (::group G o1) (::group K o2)) ;
+
+::bijection := \A.\B.\f. ::exists \fi. \/x. x#A -> \/y. y#B -> (::Apply f x y) -> (::Apply fi y x);
+
+::id_apply : \/A. \/id. (::id_map A id) -> \/x. x#A -> (::Apply id x x)
+ : \/A. \/id. { p1 : ::id_map A id } \/x. { p2 : x#A }
+	::unpack_exists (::pair_exists x x)
+	\P.\p3.
+	::let (::iff_rl (p1 P) (::exists_intro (\x. ::and x#A (::pair x x P)) x (::and_intro p2 p3))) \lemma1. -- P#id
+
+	::let (::exists_intro (\A. ::exists \B. ::Map A B id) A (::exists_intro (\B. ::Map A B id) A (::id_is_map A id p1))) 
+	\lemma2. -- ::exists \A. ::exists \B. ::Map A B id
+
+	::let (::exists_intro (\Q. ::and (::pair x x Q) Q#id) P (::and_intro p3 lemma1)) \lemma3. -- ::exists \Q. ::and (::pair x x Q) Q#id
+
+	::and_intro lemma2 lemma3
+;
+
+::id_bijection : 
+\/A. \/id. (::id_map A id) -> (::bijection A A id)
+: \/A. \/id. { p1 : ::id_map A id } 
+	::exists_intro (\fi.\/x. x#A -> \/y. y#A -> (::Apply id x y) -> (::Apply fi y x)) id 
+	(\/x. { p2 : x#A } \/y. { p3 : y#A } { p4 : ::Apply id x y }
+	::let (::id_apply A id p1 x p2) \lemma2. -- ::Apply id x x
+	::let (::apply_eq id x x y lemma2 p4) \lemma3. -- ::eq x y
+	::eq_apply id x x y lemma3 lemma2)
+;
+
+
+::map_set := \A. \B. \Q. \/M. ::iff M#Q (::Map A B M) ;
+
+::map_set_exists : \/A. \/B. ::exists (::map_set A B)
+: \/A. \/B. 
+	::unpack_exists (::cartesian_product_exists A B)
+	\C.\p1.
+	::unpack_exists (::ax_powerset C)
+	\P.\p2.
+	::unpack_exists (::subset_exists (::Map A B) P)
+	\S.\p3.	
+	
+	::exists_intro (::map_set A B) S \/z. ::iff_trans (p3 z)
+	(::iff_intro 
+	({ p4  : ::and z#P (::Map A B z) } ::and_r p4)
+	{ p4 : ::Map A B z } 
+		::unpack_exists (::and_l p4)
+		\C2.\p5.
+		::let (::cartesian_product_eq A B C2 C (::and_l p5) p1) \lemma1. -- ::eq C2 C
+		
+		::let (\/a. { p6 : a#z } ::iff_lr (lemma1 a) (::and_r p5 a p6)) \lemma2. -- ::subset z C
+
+		::and_intro (p2 z lemma2) p4)
+;
+
+::compose_assoc::1 : 
+\/X. \/Y. \/Z. \/W. \/f. \/g. \/h. \/fg. \/gh. (::Map Z W f) -> (::Map Y Z g) -> (::Map X Y h) 
+-> (::compose f g fg) -> (::compose g h gh) -> (::compose f gh fgh1) -> (::compose fg h fgh2) -> \/x. \/w. (::Apply fgh1 x w) 
+-> (::Apply fgh2 x w)
+: \/X. \/Y. \/Z. \/W. \/f. \/g. \/h. \/fg. \/gh. { p1 : ::Map Z W f } { p2 : ::Map Y Z g } { p3 : ::Map X Y h } 
+{ p4 : ::compose f g fg }  { p5 : ::compose g h gh } { p6 : ::compose f gh fgh1 } { p7 : ::compose fg h fgh2 }
+	\/x.\/w. {p8 : ::Apply fgh1 x w}
+
+	::unpack_exists (::and_r p8)
+	\P.\p9.
+	::unpack_exists (::iff_lr (p6 P) (::and_r p9))
+	\x1.\h1.
+	::unpack_exists h1
+	\z1.\h1.
+	::unpack_exists h1
+	\w1.\h1. 
+	--({t : ::and (::and (::Apply f z1 w1) (::Apply gh x1 z1)) (::pair x1 w1 P)} t) h1
+	
+	::let (::car_eq P x x1
+		(::pair_car x w P (::and_l p9))
+		(::pair_car x1 w1 P (::and_r h1))) \lemma1. -- ::eq x x1
+
+	::let (::cdr_eq P w w1
+		(::pair_cdr x w P (::and_l p9))
+		(::pair_cdr x1 w1 P (::and_r h1))) \lemma2. -- ::eq w w1
+
+	::unpack_exists (::and_r (::and_r (::and_l h1)))
+	\Q1.\h2.
+	::unpack_exists (::iff_lr (p5 Q1) (::and_r h2))
+	\x2.\h3.
+	::unpack_exists h3
+	\y2.\h3.
+	::unpack_exists h3
+	\z2.\h3.
+	--({t : ::and (::and (::Apply g y2 z2) (::Apply h x2 y2)) (::pair x2 z2 Q1)} t) h3
+	
+	::let (::car_eq Q1 x1 x2
+		(::pair_car x1 z1 Q1 (::and_l h2))
+		(::pair_car x2 z2 Q1 (::and_r h3))) \lemma3. -- ::eq x1 x2
+
+	::let (::cdr_eq Q1 z1 z2
+		(::pair_cdr x1 z1 Q1 (::and_l h2))
+		(::pair_cdr x2 z2 Q1 (::and_r h3))) \lemma4. -- ::eq z1 z2
+
+	::unpack_exists (::pair_exists y2 w1)
+	\fgP.\h4.
+
+	::let (::iff_rl (p4 fgP)
+	(::exists_intro (\y2. ::exists \z2. ::exists \w1. ::and (::and (::Apply f z2 w1) (::Apply g y2 z2)) (::pair y2 w1 fgP)) y2
+	(::exists_intro (\z2. ::exists \w1. ::and (::and (::Apply f z2 w1) (::Apply g y2 z2)) (::pair y2 w1 fgP)) z2
+	(::exists_intro (\w1. ::and (::and (::Apply f z2 w1) (::Apply g y2 z2)) (::pair y2 w1 fgP)) w1
+		(::and_intro (::and_intro
+		 (::eq_apply f w1 z1 z2 lemma4 (::and_l (::and_l h1))) --::Apply f z2 w1
+		 (::and_l (::and_l h3))) --::Apply g y2 z2
+		 h4))))) \lemma5. -- fgP#fg 
+
+
+	::let (::compose_is_map Y Z W f g p1 p2 fg p4) \lemma6. -- ::Map Y W fg
+
+	::let (::and_intro
+		(::exists_intro (\Y. ::exists \W. ::Map Y W fg) Y (::exists_intro (\W. ::Map Y W fg) W lemma6))
+		(::exists_intro (\fgP. ::and (::pair y2 w1 fgP) fgP#fg) fgP (::and_intro h4 lemma5))) \lemma7. -- ::Apply fg y2 w1
+
+	::let (::eq_apply h y2 x2 x (::eq_trans x2 x1 x (::eq_symm x1 x2 lemma3) (::eq_symm x x1 lemma1))
+	(::and_r (::and_l h3))) \lemma8. -- ::Apply h x y2
+
+	::unpack_exists (::pair_exists x w1)
+	\fghP.\h5.
+
+	::let (::compose_is_map X Y W fg h lemma6 p3 fgh2 p7) \lemma9. -- ::Map X W fgh2
+
+	::let (::and_intro (::and_intro lemma7 lemma8) h5) \lemma10.
+
+	::let (::iff_rl (p7 fghP)
+	(::exists_intro (\x. ::exists \y2. ::exists \w1. ::and (::and (::Apply fg y2 w1) (::Apply h x y2)) (::pair x w1 fghP)) x
+	(::exists_intro (\y2. ::exists \w1. ::and (::and (::Apply fg y2 w1) (::Apply h x y2)) (::pair x w1 fghP)) y2
+	(::exists_intro (\w1. ::and (::and (::Apply fg y2 w1) (::Apply h x y2)) (::pair x w1 fghP)) w1 lemma10)))) \lemma11. -- fghP#fgh2
+
+	(::and_intro
+		(::exists_intro (\X. ::exists \W. ::Map X W fgh2) X (::exists_intro (\W. ::Map X W fgh2) W lemma9))
+		(::exists_intro (\Q. ::and (::pair x w Q) Q#fgh2) fghP 
+			(::and_intro (::eq_pair_r fghP x w1 w (::eq_symm w w1 lemma2) h5) lemma11)))
+;
+
+
+::apply_intro : \/A. \/B. \/f. (::Map A B f) -> \/x. \/y. \/P. (::pair x y P) -> P#f -> (::Apply f x y)
+ : \/A. \/B. \/f. { p1 : ::Map A B f } \/x. \/y. \/P. { p2 : ::pair x y P } { p3 : P#f }
+	::and_intro
+	(::exists_intro (\A. ::exists \B. ::Map A B f) A (::exists_intro (\B. ::Map A B f) B p1))
+	(::exists_intro (\P. ::and (::pair x y P) P#f) P  (::and_intro p2 p3))
+;
+
+::map_eq::1 :
+\/A. \/B. \/f. \/g. (::Map A B f) -> (::Map A B g) -> (\/a. \/b. (::Apply f a b) -> (::Apply g a b)) -> (::subset f g)
+ : \/A. \/B. \/f. \/g. { p1 : ::Map A B f } { p2 : ::Map A B g } { p3 : \/a. \/b. (::Apply f a b) -> (::Apply g a b) } 
+	\/P. { p4 : P#f }
+	::unpack_exists (::and_l p1)
+	\Q.\h1.
+	::unpack_exists (::iff_lr ((::and_l h1) P) (::and_r h1 P p4))
+	\x.\h2.
+	::unpack_exists h2
+	\y.\h2. -- ::and (::and x#A y#B) (::pair x y P)
+	
+	::unpack_exists (::and_r (p3 x y (::apply_intro A B f p1 x y P (::and_r h2) p4)))
+	\Q.\h3.
+	::let (::pair_eq x y Q P (::and_l h3) (::and_r h2)) \lemma1. -- ::eq Q P
+
+	::iff_lr (::eq_ext lemma1 g) (::and_r h3)
+;
+
+
+::map_eq::2 : 
+\/A. \/B. \/f. \/g. (::Map A B f) -> (::Map A B g) -> (\/a. \/b. (::Apply f a b) -> (::Apply g a b)) -> (::subset g f)
+: \/A. \/B. \/f. \/g. { p1 : ::Map A B f } { p2 : ::Map A B g } { p3 : \/a. \/b. (::Apply f a b) -> (::Apply g a b) } 
+	\/P. { p4 : P#g }
+	::unpack_exists (::and_l p2)
+	\Q.\h1.
+	::unpack_exists (::iff_lr ((::and_l h1) P) (::and_r h1 P p4))
+	\x.\h2.
+	::unpack_exists h2
+	\y.\h2. -- ::and (::and x#A y#B) (::pair x y P)
+	
+	::let (::apply_intro A B g p2 x y P (::and_r h2) p4) \lemma1. -- ::Apply g x y 
+
+	::unpack_exists (::map_apply A B f p1 x (::and_l (::and_l h2)))
+	\y1.\h3. 
+	::let ((::apply_eq g x y1 y (p3 x y1 h3)) lemma1) \lemma2. --::eq y1 y
+
+	::unpack_exists (::and_r h3)
+	\Q.\h4.
+	::let (::pair_eq x y P Q (::and_r h2) (::eq_pair_r Q x y1 y lemma2 (::and_l h4))) \lemma3. --::eq P Q
+
+	::iff_rl (::eq_ext lemma3 f) (::and_r h4)
+;
+
+::map_eq : \/A. \/B. \/f. \/g. { p1 : ::Map A B f } { p2 : ::Map A B g } { p3 : \/a. \/b. (::Apply f a b) -> (::Apply g a b) }
+	::subset_eq f g 
+	(::map_eq::1 A B f g p1 p2 p3)
+	(::map_eq::2 A B f g p1 p2 p3)
+;
+
+::compose_assoc : \/X. \/Y. \/Z. \/W. \/f. \/g. \/h. \/fg. \/gh. 
+{ p1 : ::Map Z W f } { p2 : ::Map Y Z g } { p3 : ::Map X Y h } 
+{ p4 : ::compose f g fg }  { p5 : ::compose g h gh } { p6 : ::compose f gh fgh1 } { p7 : ::compose fg h fgh2 }
+	::let (::compose_is_map Y Z W f g p1 p2 fg p4) \lemma1. -- ::Map Y W fg
+	::let (::compose_is_map X Y Z g h p2 p3 gh p5) \lemma2. -- ::Map X Z gh
+
+	::let (::compose_is_map X Z W f gh p1 lemma2 fgh1 p6) \lemma3. -- ::Map X W fgh1
+	::let (::compose_is_map X Y W fg h lemma1 p3 fgh2 p7) \lemma4. -- ::Map X W fgh2
+
+	::map_eq X W fgh1 fgh2 lemma3 lemma4 (::compose_assoc::1 X Y Z W f g h fg gh p1 p2 p3 p4 p5 p6 p7) ;
+
+
+::injection := \A.\B.\f. \/x. x#A -> (::unique \y. ::and y#B (::Apply f x y));
+::surjection := \A.\B.\f. \/y. y#B -> (::exists \x. ::and x#A (::Apply f x y));
+::inverse := \A.\B.\f.\fi. \/x. x#A -> \/y. y#B -> (::Apply f x y) -> (::Apply fi y x);
+
+
+
+
+
+::compose_map := \F.\G.\H.
+	\/f. f#F -> \/g. g#G -> (::exists \P. ::exists \h. ::and (::and (::pair f g P) (::compose f g h)) (::Apply H P h));
+
+
+
+

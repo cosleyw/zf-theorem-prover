@@ -21,11 +21,13 @@ import {State, incSt, failSt, pushSt, popSt, Take, Rx, Pass,
 let wspace = Opt(Both(Many(Rx(/\s/)), popSt(x => Pass)));
 let identifier = Many(Rx(/[a-zA-Z0-9_]/));
 let ref = all(wspace, identifier, popSt(name => pushSt(Ref(name.join("")))));
-let ns_ref = all(wspace, identifier, popSt(id => pushSt(Ref(id.join("")))), 
-	Opt(all(Many(all(Take(":"), Del, Take(":"), Del, 
+
+let ns_ref = all(
+	wspace,
+	Many(all(Take(":"), Del, Take(":"), Del, 
 	identifier, popSt(id => pushSt(id.join(""))))),
-	popSt(mem => popSt(ns => pushSt(NSref([ns.name, ...mem]))))
-)));
+	popSt(mem => pushSt(NSref(mem)))
+);
 
 let zf_prop = (nxt) => {
 	let expr = (nxt) => {
@@ -89,6 +91,7 @@ let zf_prop = (nxt) => {
 
 		let primary_expr = some(
 			in_stmt, 
+			ref,
 			ns_ref, 
 			all(wspace, Take("("), Del, expr, wspace, Take(")"), Del),
 			all(wspace, Take("["), Del, expr, wspace, Take("]"), Del, 
@@ -157,7 +160,7 @@ export const print_term = (term) => {
 			str += print_term_(term.term) + " : " + print_term_(term.prop);
 			break;
 		case "ns_ref":
-			return term.name.join("::");
+			return "::" + term.name.join("::");
 		case "ref":
 			return print_ref(term);
 		case "rule":

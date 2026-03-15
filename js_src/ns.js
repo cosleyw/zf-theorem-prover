@@ -1,24 +1,18 @@
 
 export const ns_lookup = (ns, name) => {
-	let path;
-	switch(name.type){
-		case "ref":
-			path = [name.name];
-			break;
-		case "ns_ref":
-			path = name.name;
-			break;
-	}
+	let path = name.name;
 
-	let c = ns;
+	let cur = ns;
 	for(let i = 0; i < path.length - 1; i++){
-		c = ns[0][path[i]];
-		if(c == null){
-			c = ns[0][path[i]] = [{}, {}];
+		let next = cur[0][path[i]];
+		if(next == null){
+			next = cur[0][path[i]] = [{}, {}];
 		}
+
+		cur = next;
 	}
 
-	return [c[1], c[1][path.at(-1)]];
+	return [cur[1], cur[1][path.at(-1)]];
 }
 
 export const ns_get = (ns, path) => ns_lookup(ns, path)[1];

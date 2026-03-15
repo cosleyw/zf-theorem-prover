@@ -1,7 +1,7 @@
-import {zf_parse, Ref, Rule, print_term} from "./js_src/syntax.js";
+import {NSref, zf_parse, Ref, Rule, print_term} from "./js_src/syntax.js";
 import {zf_rules, term_eq} from "./js_src/zf.js";
 import {ns_get, ns_set, Ns, ns_lookup} from "./js_src/ns.js"
-import {deduce, Reduce} from "./js_src/check.js";
+import {deduce} from "./js_src/check.js";
 import fs from "node:fs";
 
 
@@ -16,7 +16,7 @@ let check_unit = (stmts, ns) => {
 		};
 		let term = stmts[i];
 		if(ns_get(ns, term.name) != null){
-			Log(print_term(term.name) + " already defined");
+			Log(print_term(term.name) + " already defined as", print_term(ns_get(ns, term.name)));
 			return log;
 		}
 
@@ -26,10 +26,12 @@ let check_unit = (stmts, ns) => {
 				let ret;
 
 				try{
-					ret = deduce(ns, term.rule);
-				}catch(e){
-					Log(e);
-					return log;
+					ret = deduce(ns, term.rule, term.dtype);
+				}catch(e){ 
+					console.log("in: " + print_term(term.name));
+					//throw e;
+					Log(e); 
+					return log; 
 				}
 
 				if(ret.type != "deduction" || ret.proof == null){
@@ -39,20 +41,18 @@ let check_unit = (stmts, ns) => {
 
 
 				ns_set(ns, term.name, ret);
-				if(term.name.type == "ref"){
-					if(term.dtype){
-						if(!term_eq(Reduce(term.dtype, ns), ret.proof.prop)){
-							Log(print_term(term.name) + " doesn't prove '" 
-								+ print_term(term.dtype) + "' but rather '" 
-								+ print_term(ret.prop) + "'.");
-							return log;
-						}
-
-						Log(print_term(term.name), print_term(term.dtype));
-						ret.prop = term.dtype;
-					}else{
-						Log(print_term(term.name), print_term(ret.prop));
+				if(term.dtype && false){ //TODO
+					if(!term_eq(Reduce(term.dtype, ns), ret.proof.prop)){
+						Log(print_term(term.name) + " doesn't prove '" 
+							+ print_term(term.dtype) + "' but rather '" 
+							+ print_term(ret.prop) + "'.");
+						return log;
 					}
+
+					Log(print_term(term.name), print_term(term.dtype));
+					ret.prop = term.dtype;
+				}else{
+					Log(print_term(term.name), print_term(ret.prop));
 				}
 			break;
 			}
@@ -76,7 +76,7 @@ let check_file = (file, watch) => {
 	}
 
 	let print_log = (log) => {
-		console.clear();
+		//console.clear();
 		log.map(v => console.log(v[1]));
 	}
 
@@ -99,7 +99,7 @@ let check_file = (file, watch) => {
 				}`);
 			};
 
-			ns_set(ns, Ref(name), Rule(name, fn, fn.length ?? 0));
+			ns_set(ns, NSref([name]), Rule(name, fn, fn.length ?? 0));
 		});
 	}else{
 		let memo = {};
@@ -112,7 +112,7 @@ let check_file = (file, watch) => {
 			}
 
 			let args = Array(rule.length).fill(0).map((v, i) => "a" + i);
-			ns_set(ns, Ref(name), Rule(name, eval(`(${args})=>{
+			ns_set(ns, NSref([name]), Rule(name, eval(`(${args})=>{
 				let str = "${name}" + " " + [${args}].map(v => v.type == "theorem" 
 					? v.thm_num
 					: "(" + print_term(v) + ")").join(" ");
@@ -130,12 +130,18 @@ let check_file = (file, watch) => {
 	}
 
 	let running = false;
-	let state = ((x) => [x, check_unit(x, ns)])(get_unit());
+	let unit = get_unit();
+	if(unit == null){
+		console.log("failed to parse");
+		return; 
+	}
+	let state = ((x) => [x, check_unit(x, ns)])(unit);
 	print_log(state[1]);
 	let queue = [];
 	if(watch){
 		fs.watchFile(file, {interval: 100, persistent: true}, ()=>{
 			setTimeout(() => {
+				console.log("checking...");
 				queue.push(get_unit());
 				if(running)
 					return;
@@ -162,7 +168,6 @@ let check_file = (file, watch) => {
 						.map(v => [v[0] + i, v[1]])];
 
 
-					console.clear();
 					print_log(log);
 					state = [unit, log];
 				}

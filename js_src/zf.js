@@ -36,7 +36,6 @@ const free_in = (ref, term) => {
 	}
 };
 
-let symbols = 0;
 const subst = (term, ref, value) => {
 	switch(term.type){
 		case "arrow":
@@ -50,7 +49,7 @@ const subst = (term, ref, value) => {
 				return term;
 
 			if(free_in(term.arg, value)){
-				let nr = Ref(symbols++);
+				let nr = Ref(Symbol());
 				return Gen(nr, subst(subst(term.body, term.arg, nr), ref, value))
 			}
 
@@ -137,7 +136,7 @@ const Z2 = Derived(
 //schema of specification
 const Z3 = (z, x, p) => {
 	if(z && x && p && z.type == "ref" && x.type == "ref" && is_prop(p)){
-		let nr = Ref(symbols++);
+		let nr = Ref(Symbol());
 		return Derived(exists(nr, Gen(x, iff(In(x, nr), and(In(x, z), p)))))
 	}
 	return null;
