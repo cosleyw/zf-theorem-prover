@@ -292,6 +292,8 @@ let match_exact_subst = (term, x, val) => {
 			return term;
 		case "arrow":
 			return Arrow(match_exact_subst(term.left, x, val), match_exact_subst(term.right, x, val));
+		case "in":
+			return In(match_exact_subst(term.member, x, val), match_exact_subst(term.set, x, val));
 		case "gen": {
 			if(term.arg.name != x.name){
 				if(typeof term.arg.name == "symbol")
@@ -321,6 +323,10 @@ let pattern_fv = (term) => {
 		} case "arrow": {
 			let e1 = pattern_fv(term.left);
 			let e2 = pattern_fv(term.right);
+			return new Map([...e1, ...e2]);
+		} case "in": {
+			let e1 = pattern_fv(term.member);
+			let e2 = pattern_fv(term.set);
 			return new Map([...e1, ...e2]);
 		} case "gen": {
 			let e1 = pattern_fv(term.body);
@@ -391,8 +397,9 @@ let unify_mp = (t1, t2) => {
 			if(uvars[prop.arg.name] == count && vals[prop.arg.name]){
 				proof = App(proof, vals[prop.arg.name]);
 			}else{
-				proof = App(proof, prop.arg);
-				unassigned.push(prop.arg);
+				let nr = Ref(Symbol());
+				proof = App(proof, nr);
+				unassigned.push(nr);
 			}
 
 			count++;
@@ -441,7 +448,8 @@ let zf_rules =
 	Z4:  ns_get(ns, NSref(["Z4"])).fn,
 	Z5:  ns_get(ns, NSref(["Z5"])).fn,
 	Z6:  ns_get(ns, NSref(["Z6"])).fn,
-	Z8:  ns_get(ns, NSref(["Z8"])).fn };
+	Z8:  ns_get(ns, NSref(["Z8"])).fn,
+	"_":  ns_get(ns, NSref(["_"])).fn };
 
 let rules = {
 	I1: (a, b) => {
@@ -490,6 +498,7 @@ let rules = {
 	Z6: null,
 	//Z7: null,
 	Z8: (t => () => t)(deduction(ZF`\\/x.!\\/y.!\\/z.(\\/a.a#z->a#x)->z#y`, zf_rules.Z8)),
+	"_": (a) => Ref(Symbol(a))
 };
 
 
@@ -583,11 +592,16 @@ let SK_Gen = (arg, body) => {
 		return rules.I2(arg, body);
 	}}
 	
-	console.log(arg, body);
-	throw new Error("cannot construct sk gen");
+	return Gen(arg, body);
+	//console.log(arg, body);
+	//throw new Error("cannot construct sk gen");
 }
 
+
+let ____to_sk_memo = new Map();
+
 let to_sk = (term, hs = {}) => {
+let to_sk_ = (term, hs) => {
 	//console.log("to_sk", print_term(term))
 	switch(term.type){
 	case "lam":
@@ -606,6 +620,7 @@ let to_sk = (term, hs = {}) => {
 			throw new Error(print_term(term) + " not defined :/");
 		return to_sk(val, hs);
 	} case "dlam": {
+		let at = to_sk(term.arg_type, hs);
 		let n_hs = {...hs};
 		n_hs[term.arg.name] = partial_deduction(term.arg_type, term.arg);
 		return SK_Dlam(term.arg, term.arg_type, to_sk(term.body, n_hs));
@@ -646,7 +661,7 @@ let to_sk = (term, hs = {}) => {
 				//console.log(print_term(pattern), "\t\t", print_term(arg));
 
 				let env = new Map();
-				if(fill_pattern(Reduce(pattern), arg.prop, env)){
+				if(fill_pattern(Reduce(pattern), arg.prop ?? arg, env)){
 					//console.log("pattern", [pattern, arg.prop, Reduce(arg.prop)].map(print_term), env);
 					let v = [...env].reduceRight((a, [x, val]) => Lam(Ref(x), a), body);
 					v = [...env].reduce((a, [x, val]) => App(a, val), App(Lam(func.arg, v), arg));
@@ -658,17 +673,25 @@ let to_sk = (term, hs = {}) => {
 
 			break;
 		} case "rule": {
-			let nr = Rule(func.name, func.fn, func.n_args, [...func.args, term.arg]);
+			let nr = Rule(func.name, func.fn, func.n_args, [...func.args, to_sk(term.arg, hs)]);
 			if(nr.n_args == nr.args.length)
 				return rules[nr.name](...nr.args);
 			return nr;
 		}}
-		console.log("app failed :/", print_term(func), hs);
+		console.log("app failed :/", print_term(func), "\t", print_term(term.arg), hs);
 		break;
 	}}
 
 	console.error(term);
 	throw new Error("cannot deduce");
+}
+
+	if(____to_sk_memo.has(term))
+		return ____to_sk_memo.get(term);
+
+	let ret = to_sk_(term, hs);
+	____to_sk_memo.set(term, ret);
+	return ret;
 }
 
 	let ret = to_sk(term);

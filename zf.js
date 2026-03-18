@@ -86,6 +86,7 @@ let check_file = (file, watch) => {
 
 	{
 
+	zf_rules["_"] = (a) => Ref(Symbol(a));
 	if(true){ //true to print hilbert style proof
 		Object.entries(zf_rules).map(([name, fn]) => {
 			let q = (rule) => {

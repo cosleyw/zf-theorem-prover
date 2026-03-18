@@ -31,7 +31,13 @@ let ns_ref = all(
 
 let zf_prop = (nxt) => {
 	let expr = (nxt) => {
-		let in_stmt = all(ref, wspace, Take("#"), Del, ref,
+		let exact_ref = some(
+			all(wspace, Take("["), Del, expr, wspace, Take("]"), Del, 
+				popSt(expr => pushSt(Exact(expr)))),
+			ref
+		);
+
+		let in_stmt = all(exact_ref, wspace, Take("#"), Del, exact_ref,
 			popSt(y => popSt(x => pushSt(In(x, y)))));
 
 		let forall = all(wspace, Take("\\"), Del, Take("/"), Del, ref, wspace, Take("."), Del, 
@@ -241,7 +247,7 @@ let zf_unit = (nxt) => {
 				zf_prop,
 				popSt(ded => popSt(name => pushSt(Definition(name, ded)))),
 				wspace, Take(";"), Del
-			),
+			)
 			)),
 			popSt(li => pushSt(li))
 		), 

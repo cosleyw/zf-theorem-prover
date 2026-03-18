@@ -178,8 +178,6 @@ So long as everything before here is correct it shouldn't matter how much crap i
 */
 
 export const zf_rules = {I1, I2, A1, A2, A3, A4, A5, Z0, Z1, Z2, Z3, Z4, Z5, Z6, /* Z7, */ Z8};
-Object.freeze(zf_rules);
 export const zf_ast = {Arrow, Not, Ref, Gen, In};
-Object.freeze(zf_ast);
 
 //exports rules, ast, term_eq
