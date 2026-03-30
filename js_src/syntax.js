@@ -1,8 +1,12 @@
-export const Arrow = (left, right) => ({type: "arrow", left, right});
-export const Not = (prop) => ({type:"not", prop});
-export const Ref = (name) => ({type: "ref", name});
-export const Gen = (arg, body) => ({type:"gen", arg, body});
-export const In = (member, set) => ({type:"in", member, set});
+import {zf_ast} from "./zf.js";
+
+
+
+export const Arrow = zf_ast.Arrow;
+export const Not = zf_ast.Not;
+export const Ref = zf_ast.Ref;
+export const Gen = zf_ast.Gen;
+export const In = zf_ast.In;
 
 export const Rule = (name, fn, n_args, args = []) => ({type: "rule", name, fn, args, n_args});
 export const Dlam = (arg, arg_type, body) => ({type:"dlam", arg, arg_type, body});
@@ -167,7 +171,7 @@ export const print_term = (term) => {
 			break;
 		case "ns_ref":
 			return "::" + term.name.join("::");
-		case "ref":
+		case zf_ast.ND.Ref:
 			return print_ref(term);
 		case "rule":
 			return term.name;
@@ -185,7 +189,7 @@ export const print_term = (term) => {
 			break;
 		case "exact":
 			return "[" + print_term_(term.prop) + "]";
-		case "gen":
+		case zf_ast.ND.Gen:
 			str += "\\/" + print_term_(term.arg) + "." + print_term_(term.body);
 			break;
 		case "app": {
@@ -199,17 +203,17 @@ export const print_term = (term) => {
 
 			str += li.map(v => print_term_(v, true)).reduceRight((a, b) => a + " " + b);
 			break;
-		} case "arrow":
+		} case zf_ast.ND.Arrow:
 			str += print_term_(term.left, true) + " -> " + print_term_(term.right);
 			break;
-		case "not":
+		case zf_ast.ND.Not:
 			if(term.prop.type == "gen"){
 				str += "!" + print_term_(term.prop);
 				break;
 			}
 
 			return "!" + print_term_(term.prop, true);
-		case "in":
+		case zf_ast.ND.In:
 			return print_term_(term.member) + "#" +  print_term_(term.set);
 	}
 		if(left)

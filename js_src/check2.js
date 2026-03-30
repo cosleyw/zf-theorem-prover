@@ -1,6 +1,7 @@
-import {ns_get, ns_set, Ns, ns_lookup} from "./ns.js"
+import {ns_get, ns_set, Ns, ns_lookup, ns_flatten} from "./ns.js"
 import {zf_rules, zf_ast, term_eq} from "./zf.js"
 import {print_term, ZF, ZF_unit, zf_parse} from "./syntax.js";
+import { deduce as builtin_deduce } from "./check.js";
 
 let App = (func, arg) => ({type:"app", func, arg});
 
@@ -196,6 +197,7 @@ let subst = (term, x, val) => {
 		case "exact":
 		case "deduction":
 		case "partial_deduction":
+		case "level":
 			return term;
 		case "ns_ref": {
 			let t1 = ns_get(ns, term);
@@ -541,135 +543,222 @@ let fill_pattern = (pattern, term, env, bound = {}, hs = []) => {
 	}
 }
 
+let ctx_level = (level, deduction) => ({type: "level", level, deduction});
+
+let deduce = (term) => {
+	let bound = {};
+
+	let taut_ref = Ref(Symbol());
+	let taut = Arrow(In(taut_ref, taut_ref), In(taut_ref, taut_ref));
+	let taut_proof = thid(In(taut_ref, taut_ref));
+
+	let hs = [taut];
+	let jt = [{}];
 
 
+	let ac = (a, b) => builtin_deduce(ns, App(App(NSref(["__builtin__", "ac"]), a), b));
+	let and_l = (a) => builtin_deduce(ns, App(NSref(["__builtin__", "and_l"]), a));
+	let and_r = (a) => builtin_deduce(ns, App(NSref(["__builtin__", "and_r"]), a));
+	let unpack = (a) => builtin_deduce(ns, App(NSref(["__builtin__", "unpack"]), a));
 
-
-
-let SK_Dlam = (arg, arg_type, body) => {
-	//console.log("SK_Dlam: ", arg, arg_type, body);
-	switch(body.type){
-	case "deduction":
-		return rules.I1(rules.A1(body.prop, arg_type), body);
-	case "partial_deduction": {
-		switch(body.term.type){
-		case zf_ast.ND.Gen: {
-			let gbody = SK_Dlam(arg, arg_type, body.term.body);
-			return rules.I1(rules.A5(body.prop.arg, arg_type, body.prop.body), rules.I2(body.prop.arg, gbody));
-		} case "app": {
-			let func = SK_Dlam(arg, arg_type, body.term.func);
-			let f_arg = SK_Dlam(arg, arg_type, body.term.arg);
-			return rules.I1(rules.I1(rules.A2(arg_type, f_arg.prop.right, body.prop), func), f_arg);
-		} case zf_ast.ND.Ref:
-			if(body.term.name == arg.name)
-				return thid(arg_type);
-			return rules.I1(rules.A1(body.prop, arg_type), body);
+	//l1 bigger
+	let connect_up = (l1, l2) => {
+		let diff = l1 - l2;
+		if(jt[l1][diff] != null)
+			return jt[l1][diff];
+		if(l1 == l2)
+			return jt[l1][diff] = thid(hs[l1]);
+		if(l1 == l2 + 1){
+			//console.log(print_term(hs[l1]));
+			return jt[l1][diff] = and_l(hs[l1]);
 		}
-		break;
-	}}
 
-	console.log("fail: ", print_term(arg), print_term(arg_type), print_term(body), body);
-	throw new Error("cannot construct sk dlam");
-}
+		let p1 = connect_up(l1, l2+1);
+		let p2 = connect_up(l2+1, l2);
 
-let SK_Gen = (arg, body) => {
-	switch(body.type){
-	case "deduction":
-	case "partial_deduction": {
-		return rules.I2(arg, body);
-	}}
-	
-	return Gen(arg, body);
-	//console.log(arg, body);
-	//throw new Error("cannot construct sk gen");
-}
-
-
-let to_sk = (term, hs = {}) => {
-	//console.log("to_sk", print_term(term))
-	switch(term.type){
-	case zf_ast.ND.Ref:
-		return hs[term.name] ?? term;
-	case "ns_ref": {
-		let val = ns_get(ns, term);
-		if(val == null) throw new Error(print_term(term) + " not defined :/");
-		return to_sk(val, hs);
-	} case "dlam": {
-		let at = to_sk(term.arg_type, hs);
-		
-		let n_hs = {...hs};
-		n_hs[term.arg.name] = partial_deduction(term.arg_type, term.arg);
-
-		return SK_Dlam(term.arg, term.arg_type, to_sk(term.body, n_hs));
-	} case zf_ast.ND.Gen: {
-		return SK_Gen(term.arg, to_sk(term.body, hs));
-	} case "rule": {
-		if(term.n_args == 0)
-			return rules[term.name]();
-		return term;
-	} case "app": {
-		let func = to_sk(term.func, hs);
-
-		switch(func.type){
-		case "lam": {
-			if(typeof func.arg.name != "symbol"){
-				let nr = Ref(Symbol());
-				return to_sk(subst(subst(func.body, func.arg, nr), nr, term.arg), hs); 
-			}
-			return to_sk(subst(func.body, func.arg, term.arg), hs);
-		} case "deduction":
-		case "partial_deduction": {
-			let arg = to_sk(term.arg, hs);
-			if(Reduce(func.prop).type == zf_ast.ND.Gen){
-				if(arg.type == zf_ast.ND.Ref)
-					return rules.I1(rules.A4(func.prop, Reduce(term.arg)), func);
-				return to_sk(unify_mp(func, arg), hs);
-			}
-
-		
-			return rules.I1(func, arg);
-		} case "match": {
-			let arg = to_sk(term.arg, hs);
-
-			for(let i = 0; i < func.cases.length; i++){
-				let [pattern, body] = func.cases[i];
-
-				let env = new Map();
-
-				if(fill_pattern(Reduce(pattern), arg.type == "deduction" || arg.type == "partial_deduction" ? arg.prop : arg, env)){
-					//console.log("pattern", [pattern, arg.prop, Reduce(arg.prop)].map(print_term), env);
-					let v = [...env].reduceRight((a, [x, val]) => Lam(Ref(x), a), body);
-					v = [...env].reduce((a, [x, val]) => App(a, val), App(Lam(func.arg, v), arg));
-
-					//console.log(print_term(v));
-					return to_sk(v, hs);
-				}
-			}
-
-			break;
-		} case "rule": {
-			let nr = Rule(func.name, func.fn, func.n_args, [...func.args, to_sk(term.arg, hs)]);
-			if(nr.n_args == nr.args.length)
-				return rules[nr.name](...nr.args);
-			return nr;
-		}}
-		console.log("app failed :/", print_term(func), "\t", print_term(term.arg), hs);
-		break;
-	} case "lam":
-	case zf_ast.ND.Not:
-	case zf_ast.ND.In:
-	case zf_ast.ND.Arrow:
-	case "match":
-	case "deduction":
-	case "partial_deduction":
-		return term;
+		return jt[l1][diff] = ac(p1, p2);
 	}
 
-	console.error(term);
-	throw new Error("cannot deduce");
+	let connect_down = (l1, l2) => {
+		let diff = l1 - l2;
+		if(jt[l1][diff] != null)
+			return jt[l1][diff];
+
+		if(l1 == l2)
+			return jt[l1][diff] = thid(hs[l1]);
+		if(l1 == l2 + 1)
+			return jt[l1][diff] = and_l(hs[l1]);
+
+		let p1 = connect_down(l1, l1-1);
+		let p2 = connect_down(l1-1, l2);
+
+		//console.log([p1, p2].map(v => print_term(v.proof)));
+
+		return jt[l1][diff] = ac(p1, p2);
+	}
+
+	let transport = (l1, l2) => {
+		if(l2 > l1)
+			throw new Error("huh?");
+		let diff = l1 - l2;
+		if(jt[l1][diff] != null)
+			return jt[l1][diff];
+		if(l1 == l2)
+			return jt[l1][diff] = thid(hs[l1]);
+		if(l1 == l2 + 1)
+			return jt[l1][diff] = and_l(hs[l1]);
+
+		let q = 1 << (31 - Math.clz32(l1 ^ l2));
+		let cut = l1 & ~(q - 1);
+
+		//console.log(l1, cut, l2);
+		let p1 = connect_down(l1, cut);
+		let p2 = connect_up(cut, l2);
+
+		return jt[l1][diff] = ac(p1, p2);
+	}
+
+	let deduce_ = (term, bound = {}) => {
+		switch(term.type){
+			case zf_ast.ND.Ref: {
+				if(bound[term.name] == null)
+					return term;
+
+				let level = bound[term.name];
+				return ctx_level(level, and_r(hs[level]));
+			} case "ns_ref": {
+				let val = ns_get(ns, term);
+				if(val == null) throw new Error(print_term(term) + " not defined :/");
+				return deduce_(val, hs);
+			} case "dlam": {
+				let n_bound = {...bound};
+				n_bound[term.arg.name] = hs.length;
+				
+				let cl = hs.length - 1;
+				hs.push(and(hs.at(-1), term.arg_type));
+				jt.push({});
+
+				let {level, deduction} = deduce_(term.body, n_bound);
+
+				hs.pop();
+				jt.pop();
+
+				return ctx_level(cl, unpack(deduction));
+			} case zf_ast.ND.Gen: {
+				let body = deduce_(term.body, bound);
+
+				if(body.type == "level"){
+					return ctx_level(body.level, 
+						rules.I1(rules.A5(term.arg, hs[body.level], body.deduction.prop.right), 
+							rules.I2(term.arg, body.deduction)));
+				}
+
+				return Gen(term.arg, body);
+			} case "rule": {
+				if(term.n_args == 0)
+					return deduce_(rules[term.name](), bound);
+
+				return term;
+			} case "app": {
+				let p1 = deduce_(term.func, bound);
+				let p2 = deduce_(term.arg, bound);
+
+				//console.log([p1, p2].map(v => [v.type, print_term(v.deduction ?? v)]));
+
+				switch(p1.type){
+				case "lam": {
+					if(typeof p1.arg.name != "symbol"){
+						let nr = Ref(Symbol());
+						return deduce_(subst(subst(p1.body, p1.arg, nr), nr, p2), bound); 
+					}
+					return deduce_(subst(p1.body, p1.arg, p2), bound);
+				} case "level": {
+					let cl = hs.length - 1;
+
+					let ft = Reduce(p1.deduction.prop.right);
+					//console.log("hi", ft.type, zf_ast.ND.Arrow);
+					//console.log(p1.deduction.prop.right.type, zf_ast.ND.Arrow);
+					if(ft.type == zf_ast.ND.Arrow){
+						//console.log([term.func, p1.deduction].map(print_term));
+
+						let c1 = transport(cl, p1.level);
+						let c2 = transport(cl, p2.level);
+
+						let F = ac(c1, p1.deduction);
+						let A = ac(c2, p2.deduction);
+						let P = rules.A2(hs[cl], p2.deduction.prop.right, 
+							p1.deduction.prop.right.type == zf_ast.ND.Arrow
+							? p1.deduction.prop.right.right
+							: App(p1.deduction.prop.right, p2.deduction.prop.right)
+						);
+
+						return ctx_level(cl, rules.I1(rules.I1(P, F), A));
+					}
+
+					if(ft.type == zf_ast.ND.Gen){
+						if(p2.type == zf_ast.ND.Ref){
+							//console.log("huh?");
+							return ctx_level(p1.level,
+								ac(p1.deduction, rules.A4(p1.deduction.prop.right, p2)));
+						}
+
+						throw new Error("not done :/");
+					}
+
+					break;
+				} case "rule": {
+					let nr = Rule(p1.name, p1.fn, p1.n_args, [...p1.args, p2]);
+					if(nr.n_args == nr.args.length)
+						return deduce_(rules[nr.name](...nr.args), bound);
+					return nr;
+				} case "match": {
+					for(let i = 0; i < p1.cases.length; i++){
+						let [pattern, body] = p1.cases[i];
+
+						let env = new Map();
+
+						if(fill_pattern(Reduce(pattern), p2.type == "level" 
+							? p2.deduction.prop.right : p2, env)){
+							//console.log("pattern", [pattern, arg.prop, Reduce(arg.prop)].map(print_term), env);
+							let v = [...env].reduceRight((a, [x, val]) => Lam(Ref(x), a), body);
+							v = [...env].reduce((a, [x, val]) => App(a, val), App(Lam(p1.arg, v), p2));
+
+							//console.log(print_term(v));
+							return deduce_(v, bound);
+						}
+					}
+					break;
+				} 
+				}
+
+				console.log("app failed :/");
+				break;
+			}case "lam":
+			case zf_ast.ND.Not:
+			case zf_ast.ND.In:
+			case zf_ast.ND.Arrow:
+			case "match":
+			case "level":
+				return term;
+			case "deduction": {
+				let cl = hs.length - 1;
+				return ctx_level(cl, 
+					rules.I1(rules.A1(term.prop, hs[cl]), term));
+			}
+					
+		}
+		console.log(term);
+		throw new Error("could not deduce :/");
+	}
+
+	let ret = deduce_(term, bound);
+	//console.log(ret);
+	return rules.I1(ret.deduction, taut_proof);
 }
 
-	let ret = to_sk(term);
+
+
+	let ret = deduce(term);
 
 
 	if(dtype){

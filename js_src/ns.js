@@ -18,4 +18,10 @@ export const ns_lookup = (ns, name) => {
 export const ns_get = (ns, path) => ns_lookup(ns, path)[1];
 export const ns_set = (ns, path, val) => ns_lookup(ns, path)[0][path.type == "ns_ref" ? path.name.at(-1) : path.name] = val;
 
+export const ns_flatten = (ns, prefix = "::") => {
+	return [...Object.entries(ns[1]).map(([name, val]) => [prefix + name, val]), 
+		...Object.entries(ns[0]).flatMap(([name, ns]) => ns_flatten(ns, prefix + name))];
+
+}
+
 export const Ns = () => [{}, {}];

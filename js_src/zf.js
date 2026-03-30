@@ -1,9 +1,18 @@
-const Arrow = (left, right) => ({type: "arrow", left, right});
-const Not = (prop) => ({type:"not", prop});
-const Ref = (name) => ({type: "ref", name});
-const Gen = (arg, body) => ({type:"gen", arg, body});
-const In = (member, set) => ({type:"in", member, set});
+const ND = {
+	Arrow: 0,
+	Not: 1,
+	Ref: 2,
+	Gen: 3,
+	In: 4
+};
 
+const Arrow = (left, right) => ({type: ND.Arrow, left, right});
+const Not = (prop) => ({type: ND.Not, prop});
+const Ref = (name) => ({type: ND.Ref, name});
+const Gen = (arg, body) => ({type: ND.Gen, arg, body});
+const In = (member, set) => ({type: ND.In, member, set});
+
+/* //Took up 40% of the runtime...
 const is_prop = (term) => {
 	switch(term.type){
 		case "arrow":
@@ -20,96 +29,135 @@ const is_prop = (term) => {
 
 	return false;
 };
+*/
 
 const free_in = (ref, term) => {
 	switch(term.type){
-		case "arrow":
+		case ND.Arrow:
 			return free_in(ref, term.left) || free_in(ref, term.right);
-		case "not":
+		case ND.Not:
 			return free_in(ref, term.prop);
-		case "ref":
+		case ND.Ref:
 			return ref.name == term.name;
-		case "gen":
+		case ND.Gen:
 			return term.arg.name != ref.name && free_in(ref, term.body);
-		case "in":
+		case ND.In:
 			return free_in(ref, term.member) || free_in(ref, term.set);
 	}
+
+	console.log(term);
+	throw new Error("not a prop >:I");
 };
 
 const subst = (term, ref, value) => {
 	switch(term.type){
-		case "arrow":
-			return Arrow(subst(term.left, ref, value), subst(term.right, ref, value));
-		case "not":
-			return Not(subst(term.prop, ref, value));
-		case "ref":
+		case ND.Arrow: {
+			let l = subst(term.left, ref, value);
+			let r = subst(term.right, ref, value);
+
+			if(l === term.left && r === term.right)
+				return term;
+			return Arrow(l, r);
+		} case ND.Not: {
+			let p = subst(term.prop, ref, value);
+			if(p === term.prop)
+				return term;
+			return Not(p);
+		} case ND.Ref: {
 			return ref.name == term.name ? value : term;
-		case "gen":
+		} case ND.Gen: {
 			if(term.arg.name == ref.name)
 				return term;
 
 			if(free_in(term.arg, value)){
 				let nr = Ref(Symbol());
-				return Gen(nr, subst(subst(term.body, term.arg, nr), ref, value))
+				let b = subst(term.body, term.arg, nr);
+				if(b === term.body)
+					return term;
+				return Gen(nr, subst(b, ref, value));
 			}
 
-			return Gen(term.arg, subst(term.body, ref, value));
-		case "in":
-			return In(subst(term.member, ref, value), subst(term.set, ref, value));
+			let b = subst(term.body, ref, value);
+			if(b === term.body)
+				return term;
+			return Gen(term.arg, b);
+		} case ND.In: {
+			let m = subst(term.member, ref, value);
+			let s = subst(term.set, ref, value);
+
+			if(m === term.member && s === term.set)
+				return term;
+			return In(m, s);
+		}
 	}
+
+	console.log(term);
+	throw new Error("not a prop >:I");
 }
 
 export const term_eq = (a, b) => {
 	if(a === b)
 		return true;
+
 	if(a.type != b.type)
 		return false;
 
 	switch(a.type){
-		case "arrow":
+		case ND.Arrow:
 			return term_eq(a.left, b.left) && term_eq(a.right, b.right);
-		case "not":
+		case ND.Not:
 			return term_eq(a.prop, b.prop);
-		case "ref":
+		case ND.Ref:
 			return a.name == b.name;
-		case "gen": {
+		case ND.Gen: {
+			if(a.arg.name == b.arg.name) //insane speedup somehow... probably due to all of the sharing i do
+				return term_eq(a.body, b.body);
+
 			let nr = Ref(Symbol());
 			return term_eq(subst(a.body, a.arg, nr), subst(b.body, b.arg, nr));
-		} case "in":
+		} case ND.In:
 			return term_eq(a.member, b.member) && term_eq(a.set, b.set);
 	}
+
+	console.log(a, b);
+	throw new Error("not a prop >:I");
 }
 
 const Derived = (prop) => ({type: "derived", prop});
   
 
-const I1 = (a, b) => a && b && a.type == "derived" && a.prop.type == "arrow" 
+const I1 = (a, b) => a && b && a.type == "derived" && a.prop.type == ND.Arrow
 	&& b.type == "derived" && term_eq(a.prop.left, b.prop)
 	? Derived(a.prop.right)
 	: null;
 
-const I2 = (ref, term) => ref && term && ref.type == "ref" && term.type == "derived"
+const I2 = (ref, term) => ref && term && ref.type == ND.Ref && term.type == "derived"
 	? Derived(Gen(ref, term.prop))
 	: null;
 
 
-const A1 = (a, b) => is_prop(a) && is_prop(b) 
-	? Derived(Arrow(a, Arrow(b, a)))
-	: null;
+const A1 = (a, b) => //is_prop(a) && is_prop(b) ? 
+	Derived(Arrow(a, Arrow(b, a)))
+	//: null
+;
 
-const A2 = (a, b, c) => is_prop(a) && is_prop(b) && is_prop(c)
-	? Derived(Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c))))
-	: null;
+const A2 = (a, b, c) => //is_prop(a) && is_prop(b) && is_prop(c) ? 
+	Derived(Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c))))
+	//: null
+;
 
-const A3 = (a, b) => is_prop(a) && is_prop(b)
-	? Derived(Arrow(Arrow(Not(a), Not(b)), Arrow(b, a)))
-	: null;
+const A3 = (a, b) => //is_prop(a) && is_prop(b) ? 
+	Derived(Arrow(Arrow(Not(a), Not(b)), Arrow(b, a)))
+	//: null
+;
 
-const A4 = (a, v) => is_prop(a) && a.type == "gen" && v.type == "ref"
+const A4 = (a, v) => //is_prop(a) && 
+	a.type == ND.Gen && v.type == ND.Ref
 	? Derived(Arrow(a, subst(a.body, a.arg, v)))
 	: null;
 
-const A5 = (x, a, b) => x.type == "ref" && is_prop(a) && is_prop(b) && !free_in(x, a)
+const A5 = (x, a, b) => x.type == ND.Ref //&& is_prop(a) && is_prop(b) 
+	&& !free_in(x, a)
 	? Derived(Arrow(Gen(x, Arrow(a, b)), Arrow(a, Gen(x, b))))
 	: null;
 
@@ -135,7 +183,7 @@ const Z2 = Derived(
 );
 //schema of specification
 const Z3 = (z, x, p) => {
-	if(z && x && p && z.type == "ref" && x.type == "ref" && is_prop(p)){
+	if(z && x && p && z.type == ND.Ref && x.type == ND.Ref /*&& is_prop(p) */){
 		let nr = Ref(Symbol());
 		return Derived(exists(nr, Gen(x, iff(In(x, nr), and(In(x, z), p)))))
 	}
@@ -148,8 +196,9 @@ const Z5 = Derived(Gen(w, exists(a, Gen(y, Gen(x, Arrow(and(In(x, y), In(y, w)),
 
 //axiom of replacement
 const Z6 = (x, y, a, p) => {
-	if(x && y && a && p && x.type == "ref" && y.type == "ref" && a.type == "ref"
-	&& is_prop(p)){
+	if(x && y && a && p && x.type == ND.Ref && y.type == ND.Ref && a.type == ND.Ref
+	//&& is_prop(p)
+	){
 		let nr = Ref(Symbol());
 		return Derived(Gen(a, Arrow(Gen(x, Arrow(In(x, a), unique(y, p))), 
 			subst(
@@ -178,6 +227,6 @@ So long as everything before here is correct it shouldn't matter how much crap i
 */
 
 export const zf_rules = {I1, I2, A1, A2, A3, A4, A5, Z0, Z1, Z2, Z3, Z4, Z5, Z6, /* Z7, */ Z8};
-export const zf_ast = {Arrow, Not, Ref, Gen, In};
+export const zf_ast = {ND, Arrow, Not, Ref, Gen, In};
 
 //exports rules, ast, term_eq
