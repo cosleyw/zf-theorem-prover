@@ -1,35 +1,10 @@
-const ND = {
-	Arrow: 0,
-	Not: 1,
-	Ref: 2,
-	Gen: 3,
-	In: 4
-};
 
+const ND = { Arrow: 0, Not: 1, Ref: 2, Gen: 3, In: 4 };
 const Arrow = (left, right) => ({type: ND.Arrow, left, right});
 const Not = (prop) => ({type: ND.Not, prop});
 const Ref = (name) => ({type: ND.Ref, name});
 const Gen = (arg, body) => ({type: ND.Gen, arg, body});
 const In = (member, set) => ({type: ND.In, member, set});
-
-/* //Took up 40% of the runtime...
-const is_prop = (term) => {
-	switch(term.type){
-		case "arrow":
-			return is_prop(term.left) && is_prop(term.right);
-		case "not":
-			return is_prop(term.prop);
-		case "ref":
-			return false;
-		case "gen":
-			return term.arg.type == "ref" && is_prop(term.body);
-		case "in":
-			return term.member.type == "ref" && term.set.type == "ref";
-	}
-
-	return false;
-};
-*/
 
 const free_in = (ref, term) => {
 	switch(term.type){
@@ -96,6 +71,8 @@ const subst = (term, ref, value) => {
 }
 
 export const term_eq = (a, b) => {
+
+	let term_eq = (a, b) => {
 	if(a === b)
 		return true;
 
@@ -110,7 +87,7 @@ export const term_eq = (a, b) => {
 		case ND.Ref:
 			return a.name == b.name;
 		case ND.Gen: {
-			if(a.arg.name == b.arg.name) //insane speedup somehow... probably due to all of the sharing i do
+			if(a.arg.name == b.arg.name)
 				return term_eq(a.body, b.body);
 
 			let nr = Ref(Symbol());
@@ -121,11 +98,20 @@ export const term_eq = (a, b) => {
 
 	console.log(a, b);
 	throw new Error("not a prop >:I");
+	}
+
+	if(a === b)
+		return true;
+
+	if(term_eq(a, b)){
+		Object.assign(a, b);
+		return true;
+	}
+	return false;
 }
 
 const Derived = (prop) => ({type: "derived", prop});
   
-
 const I1 = (a, b) => a && b && a.type == "derived" && a.prop.type == ND.Arrow
 	&& b.type == "derived" && term_eq(a.prop.left, b.prop)
 	? Derived(a.prop.right)
@@ -135,29 +121,17 @@ const I2 = (ref, term) => ref && term && ref.type == ND.Ref && term.type == "der
 	? Derived(Gen(ref, term.prop))
 	: null;
 
+const A1 = (a, b) => Derived(Arrow(a, Arrow(b, a))) ;
 
-const A1 = (a, b) => //is_prop(a) && is_prop(b) ? 
-	Derived(Arrow(a, Arrow(b, a)))
-	//: null
-;
+const A2 = (a, b, c) => Derived(Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c)))) ;
 
-const A2 = (a, b, c) => //is_prop(a) && is_prop(b) && is_prop(c) ? 
-	Derived(Arrow(Arrow(a, Arrow(b, c)), Arrow(Arrow(a, b), Arrow(a, c))))
-	//: null
-;
+const A3 = (a, b) => Derived(Arrow(Arrow(Not(a), Not(b)), Arrow(b, a))) ;
 
-const A3 = (a, b) => //is_prop(a) && is_prop(b) ? 
-	Derived(Arrow(Arrow(Not(a), Not(b)), Arrow(b, a)))
-	//: null
-;
-
-const A4 = (a, v) => //is_prop(a) && 
-	a.type == ND.Gen && v.type == ND.Ref
+const A4 = (a, v) => a.type == ND.Gen && v.type == ND.Ref
 	? Derived(Arrow(a, subst(a.body, a.arg, v)))
 	: null;
 
-const A5 = (x, a, b) => x.type == ND.Ref //&& is_prop(a) && is_prop(b) 
-	&& !free_in(x, a)
+const A5 = (x, a, b) => x.type == ND.Ref && !free_in(x, a)
 	? Derived(Arrow(Gen(x, Arrow(a, b)), Arrow(a, Gen(x, b))))
 	: null;
 
@@ -167,8 +141,6 @@ const or = (a, b) => Arrow(Not(a), b);
 const iff = (a, b) => and(Arrow(a, b), Arrow(b, a));
 const exists = (x, b) => Not(Gen(x, Not(b)));
 const unique = (x, b) => exists(x, and(b, Gen(y, Arrow(subst(b, x, y), Gen(z, iff(In(z, x), In(z, y)))))));
-
-
 const [a, b, c, d, e, x, y, z, w] = [..."abcdexyzw"].map(Ref);
 
 const Z0 = Derived(exists(x, Gen(y, Not(In(y, x)))));
@@ -196,9 +168,7 @@ const Z5 = Derived(Gen(w, exists(a, Gen(y, Gen(x, Arrow(and(In(x, y), In(y, w)),
 
 //axiom of replacement
 const Z6 = (x, y, a, p) => {
-	if(x && y && a && p && x.type == ND.Ref && y.type == ND.Ref && a.type == ND.Ref
-	//&& is_prop(p)
-	){
+	if(x && y && a && p && x.type == ND.Ref && y.type == ND.Ref && a.type == ND.Ref){
 		let nr = Ref(Symbol());
 		return Derived(Gen(a, Arrow(Gen(x, Arrow(In(x, a), unique(y, p))), 
 			subst(
@@ -210,23 +180,8 @@ const Z6 = (x, y, a, p) => {
 	return null;
 }
 
-//axiom of infinity
-//let Succ = (s) => null;
-//let Z7 = Derived(exists(x, and(exists(e, Gen(z, and(Not(In(z, e)), In(z, x)))), Gen(y, Arrow(In(y, x), In(Succ(y), x))))));
-
 //axiom of powerset
 const Z8 = Derived(Gen(x, exists(y, Gen(z, Arrow(Gen(a, Arrow(In(a, z), In(a, x))), In(z, y))))));
 
-
-/*
-
-
-So long as everything before here is correct it shouldn't matter how much crap i add on top
-
-
-*/
-
 export const zf_rules = {I1, I2, A1, A2, A3, A4, A5, Z0, Z1, Z2, Z3, Z4, Z5, Z6, /* Z7, */ Z8};
 export const zf_ast = {ND, Arrow, Not, Ref, Gen, In};
-
-//exports rules, ast, term_eq

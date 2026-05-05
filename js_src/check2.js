@@ -553,7 +553,7 @@ let deduce = (term) => {
 	let taut_proof = thid(In(taut_ref, taut_ref));
 
 	let hs = [taut];
-	let jt = [{}];
+	let jt = [[]];
 
 
 	let ac = (a, b) => builtin_deduce(ns, App(App(NSref(["__builtin__", "ac"]), a), b));
@@ -608,8 +608,7 @@ let deduce = (term) => {
 		if(l1 == l2 + 1)
 			return jt[l1][diff] = and_l(hs[l1]);
 
-		let q = 1 << (31 - Math.clz32(l1 ^ l2));
-		let cut = l1 & ~(q - 1);
+		let cut = l1 & ~((1 << 31 - Math.clz32(l1 ^ l2)) - 1);
 
 		//console.log(l1, cut, l2);
 		let p1 = connect_down(l1, cut);
@@ -619,13 +618,18 @@ let deduce = (term) => {
 	}
 
 	let deduce_ = (term, bound = {}) => {
+		//console.log(jt);
 		switch(term.type){
 			case zf_ast.ND.Ref: {
 				if(bound[term.name] == null)
 					return term;
 
-				let level = bound[term.name];
-				return ctx_level(level, and_r(hs[level]));
+				if(typeof bound[term.name] == "number"){
+					let level = bound[term.name];
+					return bound[term.name] = ctx_level(level, and_r(hs[level]));
+				}
+
+				return bound[term.name];
 			} case "ns_ref": {
 				let val = ns_get(ns, term);
 				if(val == null) throw new Error(print_term(term) + " not defined :/");
@@ -636,12 +640,18 @@ let deduce = (term) => {
 				
 				let cl = hs.length - 1;
 				hs.push(and(hs.at(-1), term.arg_type));
-				jt.push({});
+				jt.push([]);
 
 				let {level, deduction} = deduce_(term.body, n_bound);
 
 				hs.pop();
 				jt.pop();
+
+				if(level != cl + 1){
+					if(level == cl)
+						return ctx_level(level, deduction);
+					return ctx_level(cl, ac(transport(cl, level), deduction));
+				}
 
 				return ctx_level(cl, unpack(deduction));
 			} case zf_ast.ND.Gen: {
@@ -673,26 +683,28 @@ let deduce = (term) => {
 					}
 					return deduce_(subst(p1.body, p1.arg, p2), bound);
 				} case "level": {
-					let cl = hs.length - 1;
-
 					let ft = Reduce(p1.deduction.prop.right);
-					//console.log("hi", ft.type, zf_ast.ND.Arrow);
-					//console.log(p1.deduction.prop.right.type, zf_ast.ND.Arrow);
 					if(ft.type == zf_ast.ND.Arrow){
-						//console.log([term.func, p1.deduction].map(print_term));
+						let ml = Math.max(p1.level, p2.level);
 
-						let c1 = transport(cl, p1.level);
-						let c2 = transport(cl, p2.level);
+						let F = p1.deduction;
+						let A = p2.deduction;
 
-						let F = ac(c1, p1.deduction);
-						let A = ac(c2, p2.deduction);
-						let P = rules.A2(hs[cl], p2.deduction.prop.right, 
+						if(p1.level != p2.level){
+							if(ml == p1.level){
+								A = ac(transport(ml, p2.level), p2.deduction);
+							}else{
+								F = ac(transport(ml, p1.level), p1.deduction);
+							}
+						}
+
+						let P = rules.A2(hs[ml], p2.deduction.prop.right, 
 							p1.deduction.prop.right.type == zf_ast.ND.Arrow
 							? p1.deduction.prop.right.right
 							: App(p1.deduction.prop.right, p2.deduction.prop.right)
 						);
 
-						return ctx_level(cl, rules.I1(rules.I1(P, F), A));
+						return ctx_level(ml, rules.I1(rules.I1(P, F), A));
 					}
 
 					if(ft.type == zf_ast.ND.Gen){
@@ -700,8 +712,10 @@ let deduce = (term) => {
 							//console.log("huh?");
 							return ctx_level(p1.level,
 								ac(p1.deduction, rules.A4(p1.deduction.prop.right, p2)));
+				
 						}
 
+						//return deduce_(unify_mp(p1, arg), bound);
 						throw new Error("not done :/");
 					}
 
@@ -741,9 +755,8 @@ let deduce = (term) => {
 			case "level":
 				return term;
 			case "deduction": {
-				let cl = hs.length - 1;
-				return ctx_level(cl, 
-					rules.I1(rules.A1(term.prop, hs[cl]), term));
+				return ctx_level(0, 
+					rules.I1(rules.A1(term.prop, taut), term));
 			}
 					
 		}

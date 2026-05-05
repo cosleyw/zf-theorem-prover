@@ -1245,7 +1245,9 @@
 : \/G. \/op. { p1 : ::group G op } \/q. { p2 : q#G } 
 	::unique_intro (::and_l(::and_r(::and_r p1)) q p2) (::group_inverse_eq G op p1 q p2) ;
 
-::subgruop := \G.\o1.\K.\o2.  ::and (::and (::subset K G) (::subset o2 o1)) (::and (::group G o1) (::group K o2)) ;
+::subgroup := \G.\o1.\K.\o2.  
+	::and (::and (::subset K G) (::subset o2 o1)) 
+		(::and (::group G o1) (::group K o2)) ;
 
 
 ::id_apply : \/A. \/id. (::id_map A id) -> \/x. x#A -> (::Apply id x x)
@@ -1940,5 +1942,9 @@
 
 	lemma6 --TODO
 ; 
+
+
+
+
 
 
